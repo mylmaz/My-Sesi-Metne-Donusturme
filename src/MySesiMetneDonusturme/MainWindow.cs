@@ -1083,7 +1083,7 @@ namespace MySesiMetneDonusturme
             if (imageBrush != null)
             {
                 hero.Background = imageBrush;
-                DoubleAnimation pulse = new DoubleAnimation(0.84, 0.96, TimeSpan.FromSeconds(6));
+                DoubleAnimation pulse = new DoubleAnimation(0.9, 1.0, TimeSpan.FromSeconds(6));
                 pulse.AutoReverse = true;
                 pulse.RepeatBehavior = RepeatBehavior.Forever;
                 imageBrush.BeginAnimation(Brush.OpacityProperty, pulse);
@@ -1213,7 +1213,7 @@ namespace MySesiMetneDonusturme
                 image.CacheOption = BitmapCacheOption.OnLoad;
                 image.UriSource = new Uri(path, UriKind.Absolute);
                 image.EndInit();
-                return new ImageBrush(image) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Center };
+                return new ImageBrush(image) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Top };
             }
             return null;
         }
@@ -1373,6 +1373,7 @@ namespace MySesiMetneDonusturme
             button.BorderBrush = Brushes.Transparent;
             button.FontSize = 14;
             button.Cursor = Cursors.Hand;
+            button.Style = ButtonChromeStyle(new SolidColorBrush(Color.FromRgb(56, 189, 248)), Brushes.White);
             button.Click += delegate { action(); };
             return button;
         }
@@ -1383,6 +1384,7 @@ namespace MySesiMetneDonusturme
             button.Background = CreateAccentBrush();
             button.Foreground = Brushes.White;
             button.BorderBrush = Brushes.Transparent;
+            button.Style = ButtonChromeStyle(new SolidColorBrush(Color.FromRgb(14, 165, 233)), Brushes.White);
             button.Click += delegate { action(); };
             return button;
         }
@@ -1393,6 +1395,7 @@ namespace MySesiMetneDonusturme
             button.Background = _softPanelBackground;
             button.Foreground = _textBrush;
             button.BorderBrush = _borderBrush;
+            button.Style = ButtonChromeStyle(new SolidColorBrush(Color.FromRgb(56, 189, 248)), Brushes.White);
             button.Click += delegate { action(); };
             return button;
         }
@@ -1410,6 +1413,48 @@ namespace MySesiMetneDonusturme
             return button;
         }
 
+        private Style ButtonChromeStyle(Brush hoverBackground, Brush hoverForeground)
+        {
+            Style style = new Style(typeof(Button));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, _textBrush));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+
+            FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
+            border.Name = "Chrome";
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+            border.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
+            border.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
+            border.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
+            border.SetBinding(Border.PaddingProperty, new Binding("Padding") { RelativeSource = RelativeSource.TemplatedParent });
+
+            FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+            content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content") { RelativeSource = RelativeSource.TemplatedParent });
+            content.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("ContentTemplate") { RelativeSource = RelativeSource.TemplatedParent });
+            border.AppendChild(content);
+
+            ControlTemplate template = new ControlTemplate(typeof(Button));
+            template.VisualTree = border;
+            style.Setters.Add(new Setter(Control.TemplateProperty, template));
+
+            Trigger hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Control.BackgroundProperty, hoverBackground));
+            hover.Setters.Add(new Setter(Control.ForegroundProperty, hoverForeground));
+            hover.Setters.Add(new Setter(Control.BorderBrushProperty, _accentBrush));
+            style.Triggers.Add(hover);
+
+            Trigger pressed = new Trigger { Property = ButtonBase.IsPressedProperty, Value = true };
+            pressed.Setters.Add(new Setter(UIElement.OpacityProperty, 0.82));
+            style.Triggers.Add(pressed);
+
+            Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45));
+            style.Triggers.Add(disabled);
+
+            return style;
+        }
+
         private void StyleTextBox(TextBox box)
         {
             if (box == null) return;
@@ -1418,6 +1463,7 @@ namespace MySesiMetneDonusturme
             box.CaretBrush = _accentBrush;
             box.BorderBrush = _borderBrush;
             box.Padding = new Thickness(8, 5, 8, 5);
+            ApplySelectionResources(box);
         }
 
         private Border HomeCard(string title, string text)
@@ -1561,10 +1607,24 @@ namespace MySesiMetneDonusturme
             combo.Foreground = _textBrush;
             combo.BorderBrush = _borderBrush;
             combo.Padding = new Thickness(6, 3, 6, 3);
+            ApplySelectionResources(combo);
             combo.ItemContainerStyle = ComboItemStyle();
             foreach (string item in items) combo.Items.Add(item);
             combo.SelectedItem = items.Contains(selected) ? selected : items[0];
             return combo;
+        }
+
+        private void ApplySelectionResources(FrameworkElement element)
+        {
+            if (element == null) return;
+            element.Resources[SystemColors.WindowBrushKey] = _inputBackground;
+            element.Resources[SystemColors.WindowTextBrushKey] = _textBrush;
+            element.Resources[SystemColors.ControlBrushKey] = _inputBackground;
+            element.Resources[SystemColors.ControlTextBrushKey] = _textBrush;
+            element.Resources[SystemColors.HighlightBrushKey] = _accentBrush;
+            element.Resources[SystemColors.HighlightTextBrushKey] = Brushes.White;
+            element.Resources[SystemColors.InactiveSelectionHighlightBrushKey] = _accentBrush;
+            element.Resources[SystemColors.InactiveSelectionHighlightTextBrushKey] = Brushes.White;
         }
 
         private Style ComboItemStyle()
@@ -1575,6 +1635,7 @@ namespace MySesiMetneDonusturme
             style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 6, 8, 6)));
             style.Setters.Add(new Setter(Control.BorderBrushProperty, _borderBrush));
             style.Setters.Add(new Setter(Control.FontSizeProperty, 13.0));
+            style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
             Trigger highlighted = new Trigger { Property = ComboBoxItem.IsHighlightedProperty, Value = true };
             highlighted.Setters.Add(new Setter(Control.BackgroundProperty, _accentBrush));
             highlighted.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));

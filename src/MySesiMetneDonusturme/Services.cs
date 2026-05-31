@@ -1074,6 +1074,27 @@ namespace MySesiMetneDonusturme
             replacements["süpriz"] = "sürpriz";
             replacements["yanlızca"] = "yalnızca";
             replacements["aferim"] = "aferin";
+            replacements["teşekür"] = "teşekkür";
+            replacements["teşekürler"] = "teşekkürler";
+            replacements["saol"] = "sağ ol";
+            replacements["sağol"] = "sağ ol";
+            replacements["bir az"] = "biraz";
+            replacements["farketmez"] = "fark etmez";
+            replacements["farkettim"] = "fark ettim";
+            replacements["kaydetdi"] = "kaydetti";
+            replacements["etdi"] = "etti";
+            replacements["gitdi"] = "gitti";
+            replacements["yapdı"] = "yaptı";
+            replacements["olucak"] = "olacak";
+            replacements["gelicek"] = "gelecek";
+            replacements["gidicek"] = "gidecek";
+            replacements["yapıcak"] = "yapacak";
+            replacements["edicek"] = "edecek";
+            replacements["deyil"] = "değil";
+            replacements["bilmiyom"] = "bilmiyorum";
+            replacements["yapıyom"] = "yapıyorum";
+            replacements["geliyom"] = "geliyorum";
+            replacements["gidiyom"] = "gidiyorum";
 
             foreach (KeyValuePair<string, string> item in replacements)
             {
