@@ -28,6 +28,8 @@ $refs = @(
     (Join-Path $framework "System.dll"),
     (Join-Path $framework "System.Core.dll"),
     (Join-Path $framework "System.Drawing.dll"),
+    (Join-Path $framework "System.IO.Compression.dll"),
+    (Join-Path $framework "System.IO.Compression.FileSystem.dll"),
     (Join-Path $framework "System.Runtime.Serialization.dll"),
     (Join-Path $framework "System.Web.Extensions.dll"),
     (Join-Path $framework "System.Windows.Forms.dll"),
@@ -45,7 +47,8 @@ $compileArgs = @(
     "/optimize+",
     "/codepage:65001",
     "/utf8output",
-    "/out:$exeOut"
+    "/out:$exeOut",
+    "/win32icon:$(Join-Path $root 'Assets\AppIcon.ico')"
 ) + $refs + $sources
 
 & $csc @compileArgs
@@ -58,6 +61,13 @@ $toolDest = Join-Path $out "Tools"
 if (Test-Path $toolSource) {
     New-Item -ItemType Directory -Force -Path $toolDest | Out-Null
     Copy-Item -Path (Join-Path $toolSource "*") -Destination $toolDest -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+$assetSource = Join-Path $root "Assets"
+$assetDest = Join-Path $out "Assets"
+if (Test-Path $assetSource) {
+    New-Item -ItemType Directory -Force -Path $assetDest | Out-Null
+    Copy-Item -Path (Join-Path $assetSource "*") -Destination $assetDest -Recurse -Force
 }
 
 Copy-Item -Path (Join-Path $root "README.md") -Destination $out -Force -ErrorAction SilentlyContinue

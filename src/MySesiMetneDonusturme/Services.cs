@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -42,6 +44,16 @@ namespace MySesiMetneDonusturme
             get
             {
                 string root = Path.Combine(DataRoot, "work");
+                EnsureDirectory(root);
+                return root;
+            }
+        }
+
+        public static string ToolsRoot
+        {
+            get
+            {
+                string root = Path.Combine(DataRoot, "Tools");
                 EnsureDirectory(root);
                 return root;
             }
@@ -323,7 +335,7 @@ namespace MySesiMetneDonusturme
             Add(items, "FFmpeg", FindTool("ffmpeg", new string[] { "ffmpeg.exe" }), "Tools\\ffmpeg\\ffmpeg.exe");
             Add(items, "FFprobe", FindTool("ffmpeg", new string[] { "ffprobe.exe" }), "Tools\\ffmpeg\\ffprobe.exe");
             Add(items, "Whisper", FindTool("whisper", new string[] { "whisper-cli.exe", "main.exe" }), "Tools\\whisper\\whisper-cli.exe");
-            Add(items, "Whisper model", FindModel("Dengeli"), "Tools\\models\\ggml-small.bin");
+            Add(items, "Whisper model", FindModel("Dengeli"), "Tools\\models\\ggml-base.bin");
             Add(items, "yt-dlp", FindTool("yt-dlp", new string[] { "yt-dlp.exe" }), "Tools\\yt-dlp\\yt-dlp.exe");
             return items;
         }
@@ -350,9 +362,9 @@ namespace MySesiMetneDonusturme
 
         public string FindModel(string modelChoice)
         {
-            string name = "ggml-small.bin";
-            if (String.Equals(modelChoice, "Hızlı", StringComparison.OrdinalIgnoreCase)) name = "ggml-base.bin";
-            if (String.Equals(modelChoice, "Yüksek Doğruluk", StringComparison.OrdinalIgnoreCase)) name = "ggml-medium.bin";
+            string name = "ggml-base.bin";
+            if (String.Equals(modelChoice, "Hızlı", StringComparison.OrdinalIgnoreCase)) name = "ggml-tiny.bin";
+            if (String.Equals(modelChoice, "Yüksek Doğruluk", StringComparison.OrdinalIgnoreCase)) name = "ggml-small.bin";
 
             foreach (string root in GetToolRoots())
             {
@@ -441,9 +453,179 @@ namespace MySesiMetneDonusturme
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             yield return baseDir;
+            yield return AppPaths.DataRoot;
             yield return Path.GetFullPath(Path.Combine(baseDir, ".."));
             yield return Path.GetFullPath(Path.Combine(baseDir, "..", ".."));
             yield return Directory.GetCurrentDirectory();
+        }
+    }
+
+    public class ToolInstallerService
+    {
+        private const string YtDlpUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+        private const string WhisperZipUrl = "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip";
+        private const string FfmpegZipUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+        private const string BaseModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+
+        private readonly DependencyService _dependencies;
+
+        public ToolInstallerService(DependencyService dependencies)
+        {
+            _dependencies = dependencies;
+        }
+
+        public bool HasTranscriptionTools()
+        {
+            return !String.IsNullOrEmpty(_dependencies.FindFfmpeg()) &&
+                   !String.IsNullOrEmpty(_dependencies.FindWhisper()) &&
+                   !String.IsNullOrEmpty(_dependencies.FindModel("Dengeli"));
+        }
+
+        public bool HasYouTubeTools()
+        {
+            return !String.IsNullOrEmpty(_dependencies.FindYtDlp()) &&
+                   !String.IsNullOrEmpty(_dependencies.FindFfmpeg());
+        }
+
+        public async Task EnsureAllAsync(IProgress<string> progress, CancellationToken token)
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            await Task.Factory.StartNew(delegate
+            {
+                string tools = AppPaths.ToolsRoot;
+                string download = Path.Combine(AppPaths.WorkRoot, "downloads");
+                AppPaths.EnsureDirectory(download);
+
+                EnsureYtDlp(tools, progress, token);
+                EnsureFfmpeg(tools, download, progress, token);
+                EnsureWhisper(tools, download, progress, token);
+                EnsureBaseModel(tools, progress, token);
+
+                Report(progress, "Araçlar hazır.");
+            }, token);
+        }
+
+        public async Task EnsureYouTubeAsync(IProgress<string> progress, CancellationToken token)
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            await Task.Factory.StartNew(delegate
+            {
+                string tools = AppPaths.ToolsRoot;
+                string download = Path.Combine(AppPaths.WorkRoot, "downloads");
+                AppPaths.EnsureDirectory(download);
+                EnsureYtDlp(tools, progress, token);
+                EnsureFfmpeg(tools, download, progress, token);
+                Report(progress, "YouTube araçları hazır.");
+            }, token);
+        }
+
+        public async Task EnsureTranscriptionAsync(IProgress<string> progress, CancellationToken token)
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            await Task.Factory.StartNew(delegate
+            {
+                string tools = AppPaths.ToolsRoot;
+                string download = Path.Combine(AppPaths.WorkRoot, "downloads");
+                AppPaths.EnsureDirectory(download);
+                EnsureFfmpeg(tools, download, progress, token);
+                EnsureWhisper(tools, download, progress, token);
+                EnsureBaseModel(tools, progress, token);
+                Report(progress, "Transkripsiyon araçları hazır.");
+            }, token);
+        }
+
+        private void EnsureYtDlp(string tools, IProgress<string> progress, CancellationToken token)
+        {
+            if (!String.IsNullOrEmpty(_dependencies.FindYtDlp())) return;
+            Report(progress, "YouTube bileşeni indiriliyor...");
+            DownloadFile(YtDlpUrl, Path.Combine(tools, "yt-dlp", "yt-dlp.exe"), token);
+        }
+
+        private void EnsureFfmpeg(string tools, string download, IProgress<string> progress, CancellationToken token)
+        {
+            if (!String.IsNullOrEmpty(_dependencies.FindFfmpeg()) && !String.IsNullOrEmpty(_dependencies.FindFfprobe())) return;
+            Report(progress, "FFmpeg indiriliyor...");
+            string zip = Path.Combine(download, "ffmpeg.zip");
+            DownloadFile(FfmpegZipUrl, zip, token);
+            ExtractFfmpeg(zip, Path.Combine(tools, "ffmpeg"));
+        }
+
+        private void EnsureWhisper(string tools, string download, IProgress<string> progress, CancellationToken token)
+        {
+            if (!String.IsNullOrEmpty(_dependencies.FindWhisper())) return;
+            Report(progress, "Whisper motoru indiriliyor...");
+            string zip = Path.Combine(download, "whisper.zip");
+            DownloadFile(WhisperZipUrl, zip, token);
+            ExtractWhisper(zip, Path.Combine(tools, "whisper"));
+        }
+
+        private void EnsureBaseModel(string tools, IProgress<string> progress, CancellationToken token)
+        {
+            if (!String.IsNullOrEmpty(_dependencies.FindModel("Dengeli"))) return;
+            Report(progress, "Whisper modeli indiriliyor...");
+            DownloadFile(BaseModelUrl, Path.Combine(tools, "models", "ggml-base.bin"), token);
+        }
+
+        private static void DownloadFile(string url, string destination, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            string folder = Path.GetDirectoryName(destination);
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+            string temp = destination + ".download";
+            if (File.Exists(temp)) File.Delete(temp);
+            using (WebClient client = new WebClient())
+            {
+                client.Headers.Add("User-Agent", "MySesiMetneDonusturme/1.0.0");
+                client.DownloadFile(url, temp);
+            }
+            token.ThrowIfCancellationRequested();
+            if (File.Exists(destination)) File.Delete(destination);
+            File.Move(temp, destination);
+        }
+
+        private static void ExtractWhisper(string zipPath, string destination)
+        {
+            AppPaths.EnsureDirectory(destination);
+            using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+            {
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    if (String.IsNullOrEmpty(entry.Name)) continue;
+                    if (!entry.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                        !entry.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string outPath = Path.Combine(destination, entry.Name);
+                    if (File.Exists(outPath)) File.Delete(outPath);
+                    entry.ExtractToFile(outPath);
+                }
+            }
+        }
+
+        private static void ExtractFfmpeg(string zipPath, string destination)
+        {
+            AppPaths.EnsureDirectory(destination);
+            using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+            {
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    string name = entry.Name.ToLowerInvariant();
+                    if (name != "ffmpeg.exe" && name != "ffprobe.exe") continue;
+
+                    string outPath = Path.Combine(destination, entry.Name);
+                    if (File.Exists(outPath)) File.Delete(outPath);
+                    entry.ExtractToFile(outPath);
+                }
+            }
+        }
+
+        private static void Report(IProgress<string> progress, string message)
+        {
+            if (progress != null) progress.Report(message);
+            Logger.Info(message);
         }
     }
 
@@ -495,13 +677,18 @@ namespace MySesiMetneDonusturme
         public async Task<string> DownloadAudioAsync(string url, string workDirectory, CancellationToken token)
         {
             string ytdlp = _dependencies.FindYtDlp();
+            string ffmpeg = _dependencies.FindFfmpeg();
             if (String.IsNullOrEmpty(ytdlp))
             {
                 throw new UserVisibleException("YouTube indirme bileşeni bulunamadı. Tools\\yt-dlp\\yt-dlp.exe dosyasını ekleyin.");
             }
+            if (String.IsNullOrEmpty(ffmpeg))
+            {
+                throw new UserVisibleException("YouTube ses çıkarma için FFmpeg bulunamadı.");
+            }
             AppPaths.EnsureDirectory(workDirectory);
             string outputPattern = Path.Combine(workDirectory, "youtube_audio.%(ext)s");
-            string args = "-x --audio-format wav --no-playlist -o " + ProcessRunner.Quote(outputPattern) + " " + ProcessRunner.Quote(url);
+            string args = "-x --audio-format wav --ffmpeg-location " + ProcessRunner.Quote(Path.GetDirectoryName(ffmpeg)) + " --no-playlist -o " + ProcessRunner.Quote(outputPattern) + " " + ProcessRunner.Quote(url);
             ProcessResult result = await _runner.RunAsync(ytdlp, args, token);
             if (result.ExitCode != 0)
             {

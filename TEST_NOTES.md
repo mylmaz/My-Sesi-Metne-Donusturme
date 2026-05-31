@@ -12,6 +12,10 @@ Tarih: 2026-05-31
 - Üretilen setup: `dist\MySesiMetneDonusturme_Setup_v1.0.0.exe`
 - Masaüstü build klasörü oluşturuldu: `MySesiMetneDonusturme_Build`
 - Uygulama gizli pencereyle kısa süre başlatıldı; startup crash görülmedi.
+- Eksik araçlar için otomatik indirme akışı eklendi: yt-dlp, FFmpeg, whisper.cpp ve `ggml-base.bin`.
+- Ana sayfa AI/müzik görselli slider, animasyonlu ses dalgaları ve direkt erişim butonlarıyla yenilendi.
+- Dosya yükleme üst alanı taşmayı önlemek için sarmal buton/seçenek düzenine çevrildi.
+- Açık/koyu tema kaydedildiğinde arayüz yeniden uygulanacak şekilde düzeltildi.
 
 ## Senaryo Durumu
 
@@ -29,4 +33,4 @@ Tarih: 2026-05-31
 
 ## Not
 
-Gerçek transkripsiyon testleri bu oturumda tamamlanamadı, çünkü workspace içinde FFmpeg, whisper.cpp binary/model dosyaları ve yt-dlp bulunmuyor. Uygulama bu eksikleri Ayarlar ekranında gösterir ve kullanıcıya anlaşılır uyarı verir. Dahili setup paketi oluşturuldu; yönetici izni gerektirdiği için gerçek kurulum çalıştırılmadı.
+Gerçek transkripsiyon testleri bu oturumda tamamlanamadı, çünkü araç/model indirmeleri büyük dosyalar içeriyor ve manuel medya dosyası sağlanmadı. Uygulama artık bu eksikleri işlem başlatırken resmi kaynaklardan indirecek şekilde yönlendirir. Dahili setup paketi oluşturuldu; yönetici izni gerektirdiği için gerçek kurulum çalıştırılmadı.

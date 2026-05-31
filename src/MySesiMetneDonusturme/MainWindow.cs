@@ -14,6 +14,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 
 namespace MySesiMetneDonusturme
@@ -27,6 +28,7 @@ namespace MySesiMetneDonusturme
         private readonly TranscriptionService _transcriptionService;
         private readonly ExportService _exportService;
         private readonly YouTubeService _youTubeService;
+        private readonly ToolInstallerService _toolInstallerService;
         private readonly ObservableCollection<MediaJob> _jobs;
 
         private AppSettings _settings;
@@ -52,13 +54,17 @@ namespace MySesiMetneDonusturme
         private TextBox _outputFolderBox;
         private YouTubeMetadata _currentMetadata;
         private CancellationTokenSource _cancelSource;
+        private readonly Random _random;
 
-        private readonly Brush _pageBackground;
-        private readonly Brush _panelBackground;
-        private readonly Brush _softPanelBackground;
-        private readonly Brush _textBrush;
-        private readonly Brush _mutedBrush;
-        private readonly Brush _accentBrush;
+        private Brush _pageBackground;
+        private Brush _panelBackground;
+        private Brush _softPanelBackground;
+        private Brush _textBrush;
+        private Brush _mutedBrush;
+        private Brush _accentBrush;
+        private Brush _inputBackground;
+        private Brush _borderBrush;
+        private Brush _headerBackground;
 
         public MainWindow()
         {
@@ -69,15 +75,12 @@ namespace MySesiMetneDonusturme
             _transcriptionService = new TranscriptionService(_dependencyService, _processRunner, _historyService);
             _exportService = new ExportService();
             _youTubeService = new YouTubeService(_dependencyService, _processRunner);
+            _toolInstallerService = new ToolInstallerService(_dependencyService);
             _jobs = new ObservableCollection<MediaJob>();
+            _random = new Random();
             _settings = _settingsService.Load();
 
-            _pageBackground = new SolidColorBrush(Color.FromRgb(9, 14, 29));
-            _panelBackground = new SolidColorBrush(Color.FromRgb(16, 24, 43));
-            _softPanelBackground = new SolidColorBrush(Color.FromRgb(27, 39, 66));
-            _textBrush = new SolidColorBrush(Color.FromRgb(241, 245, 249));
-            _mutedBrush = new SolidColorBrush(Color.FromRgb(166, 180, 205));
-            _accentBrush = new SolidColorBrush(Color.FromRgb(56, 189, 248));
+            ApplyThemePalette();
 
             Title = "My Sesi Metne Dönüştürme";
             Width = 1280;
@@ -88,7 +91,7 @@ namespace MySesiMetneDonusturme
             FontFamily = new FontFamily("Segoe UI");
             Background = _pageBackground;
             Foreground = _textBrush;
-            Icon = CreateWindowIcon();
+            Icon = LoadWindowIcon();
 
             Content = BuildShell();
             AllowDrop = true;
@@ -133,7 +136,7 @@ namespace MySesiMetneDonusturme
             nav.Children.Add(CreateSidebarButton("Hakkında", delegate { ShowAbout(); }));
 
             Grid main = new Grid();
-            main.RowDefinitions.Add(new RowDefinition { Height = new GridLength(84) });
+            main.RowDefinitions.Add(new RowDefinition { Height = new GridLength(88) });
             main.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             main.RowDefinitions.Add(new RowDefinition { Height = new GridLength(34) });
             Grid.SetColumn(main, 1);
@@ -141,13 +144,12 @@ namespace MySesiMetneDonusturme
 
             Border header = new Border();
             header.Padding = new Thickness(26, 18, 26, 12);
-            header.Background = new SolidColorBrush(Color.FromRgb(11, 18, 32));
+            header.Background = _headerBackground;
             Grid.SetRow(header, 0);
             main.Children.Add(header);
 
             Grid headerGrid = new Grid();
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.Child = headerGrid;
 
             StackPanel headerText = new StackPanel();
@@ -159,19 +161,12 @@ namespace MySesiMetneDonusturme
             headerText.Children.Add(CreateMutedText("Reklamsız, ücretsiz ve sınırsız ses metne dönüştürme deneyimi."));
             headerGrid.Children.Add(headerText);
 
-            StackPanel badges = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            badges.Children.Add(CreateBadge("Yerel"));
-            badges.Children.Add(CreateBadge("Gizli"));
-            badges.Children.Add(CreateBadge("AI"));
-            Grid.SetColumn(badges, 1);
-            headerGrid.Children.Add(badges);
-
             _content = new ContentControl();
             Grid.SetRow(_content, 1);
             main.Children.Add(_content);
 
             Border status = new Border();
-            status.Background = new SolidColorBrush(Color.FromRgb(8, 12, 24));
+            status.Background = _headerBackground;
             status.Padding = new Thickness(26, 6, 26, 6);
             _statusText = CreateMutedText("");
             status.Child = _statusText;
@@ -187,34 +182,21 @@ namespace MySesiMetneDonusturme
             ScrollViewer scroll = PageScroll();
             StackPanel panel = PageStack();
 
-            TextBlock headline = new TextBlock();
-            headline.Text = "My Sesi Metne Dönüştürme";
-            headline.FontSize = 34;
-            headline.FontWeight = FontWeights.Bold;
-            headline.Foreground = _textBrush;
-            headline.Margin = new Thickness(0, 0, 0, 8);
-            panel.Children.Add(headline);
+            panel.Children.Add(CreateHeroSlider());
 
-            TextBlock intro = CreateMutedText("Ses, video ve izinli YouTube içeriklerini yerel araçlarla zaman damgalı metne dönüştürün. Dosyalar varsayılan olarak bilgisayarınızdan dışarı gönderilmez.");
-            intro.FontSize = 16;
-            intro.TextWrapping = TextWrapping.Wrap;
-            intro.Margin = new Thickness(0, 0, 0, 22);
-            panel.Children.Add(intro);
-
-            UniformGrid cards = new UniformGrid { Columns = 2, Margin = new Thickness(0, 0, 0, 22) };
-            cards.Children.Add(HomeCard("Ses & Video Dosyalarını Metne Çevir", "MP3, M4A, WAV, MP4, MKV ve daha fazlası."));
-            cards.Children.Add(HomeCard("YouTube Linklerinden Transkripsiyon", "Sadece indirme hakkınız olan içerikler için."));
-            cards.Children.Add(HomeCard("PDF, Word ve TXT Olarak İndir", "DOCX, SRT ve VTT çıktıları da hazır."));
-            cards.Children.Add(HomeCard("Zaman Damgalı Akıllı Metin", "[00:00:00] biçiminde düzenlenebilir metin."));
-            panel.Children.Add(cards);
-
-            StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal };
-            actions.Children.Add(CreatePrimaryButton("Dosya ekle", delegate { ShowFiles(); AddFilesFromDialog(); }));
-            actions.Children.Add(CreateGhostButton("YouTube linki", delegate { ShowYouTube(); }));
-            actions.Children.Add(CreateGhostButton("Ayarları kontrol et", delegate { ShowSettings(); }));
+            WrapPanel actions = new WrapPanel { Margin = new Thickness(0, 18, 0, 16) };
+            actions.Children.Add(CreatePrimaryButton("Dosya yükle", delegate { ShowFiles(); AddFilesFromDialog(); }));
+            actions.Children.Add(CreatePrimaryButton("YouTube linki", delegate { ShowYouTube(); }));
+            actions.Children.Add(CreateGhostButton("Araçları hazırla", async delegate { await EnsureToolsReadyAsync("Tüm ücretsiz araçlar indirilsin mi? İlk kurulumda indirme biraz sürebilir."); }));
+            actions.Children.Add(CreateGhostButton("Geçmiş", delegate { ShowHistory(); }));
+            actions.Children.Add(CreateGhostButton("Ayarlar", delegate { ShowSettings(); }));
             panel.Children.Add(actions);
 
-            panel.Children.Add(DependencySummaryCard());
+            UniformGrid cards = new UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, 8) };
+            cards.Children.Add(HomeCard("Ses & video", "MP3, WAV, M4A, MP4, MKV ve diğer formatlar."));
+            cards.Children.Add(HomeCard("YouTube", "İzinli linklerden sesi alıp metne dönüştürme."));
+            cards.Children.Add(HomeCard("Çıktılar", "PDF, Word, TXT, SRT ve VTT olarak indirme."));
+            panel.Children.Add(cards);
 
             scroll.Content = panel;
             _content.Content = scroll;
@@ -233,12 +215,18 @@ namespace MySesiMetneDonusturme
             Grid.SetRow(top, 0);
             page.Children.Add(top);
 
-            Grid topGrid = new Grid();
-            topGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            topGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            top.Child = topGrid;
+            StackPanel topStack = new StackPanel();
+            top.Child = topStack;
 
-            StackPanel options = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            WrapPanel buttons = new WrapPanel { Margin = new Thickness(0, 0, 0, 12) };
+            buttons.Children.Add(CreatePrimaryButton("Dosya seç", delegate { AddFilesFromDialog(); }));
+            buttons.Children.Add(CreatePrimaryButton("Başlat", async delegate { await StartQueueAsync(); }));
+            buttons.Children.Add(CreateGhostButton("İptal", delegate { CancelWork(); }));
+            buttons.Children.Add(CreateGhostButton("Klasörü aç", delegate { OpenFolder(GetOutputFolder()); }));
+            buttons.Children.Add(CreateGhostButton("Araçları hazırla", async delegate { await EnsureToolsReadyAsync("Transkripsiyon araçları indirilsin mi?"); }));
+            topStack.Children.Add(buttons);
+
+            WrapPanel options = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
             _languageCombo = Combo(new string[] { "Türkçe", "Otomatik Algıla", "İngilizce", "Almanca", "Arapça" }, _settings.DefaultLanguage);
             _modelCombo = Combo(new string[] { "Hızlı", "Dengeli", "Yüksek Doğruluk" }, _settings.DefaultModel);
             options.Children.Add(Labeled("Dil", _languageCombo, 150));
@@ -255,15 +243,7 @@ namespace MySesiMetneDonusturme
             options.Children.Add(_punctuationCheck);
             options.Children.Add(_splitCheck);
             options.Children.Add(_silenceCheck);
-            topGrid.Children.Add(options);
-
-            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            buttons.Children.Add(CreatePrimaryButton("Dosya seç", delegate { AddFilesFromDialog(); }));
-            buttons.Children.Add(CreateGhostButton("Başlat", async delegate { await StartQueueAsync(); }));
-            buttons.Children.Add(CreateGhostButton("İptal", delegate { CancelWork(); }));
-            buttons.Children.Add(CreateGhostButton("Klasörü aç", delegate { OpenFolder(GetOutputFolder()); }));
-            Grid.SetColumn(buttons, 1);
-            topGrid.Children.Add(buttons);
+            topStack.Children.Add(options);
 
             Grid middle = new Grid { Margin = new Thickness(0, 14, 0, 14) };
             middle.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
@@ -286,8 +266,9 @@ namespace MySesiMetneDonusturme
             helpStack.Children.Add(WrapText("mp3, mp4, mpeg, mpga, m4a, wav, webm, mov, aac, ogg, opus, wma, wmv, avi, flac, mkv"));
             helpStack.Children.Add(SectionTitle("Gizlilik"));
             helpStack.Children.Add(WrapText("Varsayılan işlem yereldir. Bulut API, abonelik, kota ya da reklam sistemi kullanılmaz."));
-            helpStack.Children.Add(SectionTitle("Araç durumu"));
-            helpStack.Children.Add(DependencySummarySmall());
+            helpStack.Children.Add(SectionTitle("Müzik akışı"));
+            helpStack.Children.Add(WrapText("Kuyruğa dosya ekleyin, Başlat düğmesine basın ve metni altta düzenleyin."));
+            helpStack.Children.Add(CreateAudioBars(260, 70));
             help.Child = helpStack;
             Grid.SetColumn(help, 1);
             middle.Children.Add(help);
@@ -334,6 +315,7 @@ namespace MySesiMetneDonusturme
             _youtubeUrlBox.FontSize = 14;
             _youtubeUrlBox.Text = "";
             _youtubeUrlBox.ToolTip = "YouTube bağlantısı";
+            StyleTextBox(_youtubeUrlBox);
             Grid.SetColumn(_youtubeUrlBox, 0);
             grid.Children.Add(_youtubeUrlBox);
 
@@ -399,8 +381,8 @@ namespace MySesiMetneDonusturme
             grid.HeadersVisibility = DataGridHeadersVisibility.Column;
             grid.Background = Brushes.Transparent;
             grid.Foreground = _textBrush;
-            grid.RowBackground = new SolidColorBrush(Color.FromRgb(20, 31, 54));
-            grid.AlternatingRowBackground = new SolidColorBrush(Color.FromRgb(24, 36, 62));
+            grid.RowBackground = _softPanelBackground;
+            grid.AlternatingRowBackground = _panelBackground;
             grid.GridLinesVisibility = DataGridGridLinesVisibility.None;
             grid.Columns.Add(TextColumn("Dosya", "FileName", 2));
             grid.Columns.Add(TextColumn("Tarih", "CreatedAt", 1));
@@ -429,8 +411,9 @@ namespace MySesiMetneDonusturme
             stack.Children.Add(SectionTitle("Varsayılanlar"));
 
             _outputFolderBox = new TextBox { Text = _settings.OutputFolder, MinHeight = 34, Margin = new Thickness(0, 4, 8, 10) };
-            StackPanel folderRow = new StackPanel { Orientation = Orientation.Horizontal };
-            folderRow.Children.Add(new Border { Width = 620, Child = _outputFolderBox });
+            StyleTextBox(_outputFolderBox);
+            WrapPanel folderRow = new WrapPanel();
+            folderRow.Children.Add(new Border { Width = 620, MaxWidth = 620, Child = _outputFolderBox });
             folderRow.Children.Add(CreateGhostButton("Klasör seç", delegate { ChooseOutputFolder(); }));
             stack.Children.Add(LabeledBlock("Çıktı klasörü", folderRow));
 
@@ -456,6 +439,9 @@ namespace MySesiMetneDonusturme
                 _settings.AutoSave = autosave.IsChecked == true;
                 _settings.TimestampsEnabled = timestamps.IsChecked == true;
                 _settingsService.Save(_settings);
+                ApplyThemePalette();
+                Content = BuildShell();
+                ShowSettings();
                 UpdateStatus("Ayarlar kaydedildi");
             }));
             settingButtons.Children.Add(CreateGhostButton("Çıktı klasörünü aç", delegate { OpenFolder(_settings.OutputFolder); }));
@@ -467,9 +453,9 @@ namespace MySesiMetneDonusturme
             panel.Children.Add(deps);
             StackPanel depStack = new StackPanel();
             deps.Child = depStack;
-            depStack.Children.Add(SectionTitle("Başlangıç araç kontrolü"));
-            depStack.Children.Add(DependencyGrid());
-            depStack.Children.Add(CreateGhostButton("Tekrar kontrol et", delegate { ShowSettings(); }));
+            depStack.Children.Add(SectionTitle("Transkripsiyon araçları"));
+            depStack.Children.Add(WrapText("Eksik bileşen varsa uygulama işlem başlatırken tek tıkla indirir. İsterseniz hepsini şimdi hazırlayabilirsiniz."));
+            depStack.Children.Add(CreatePrimaryButton("Araçları indir / güncelle", async delegate { await EnsureToolsReadyAsync("Tüm ücretsiz araçlar indirilsin veya güncellensin mi?"); }));
 
             scroll.Content = panel;
             _content.Content = scroll;
@@ -509,8 +495,8 @@ namespace MySesiMetneDonusturme
             grid.HeadersVisibility = DataGridHeadersVisibility.Column;
             grid.Background = Brushes.Transparent;
             grid.Foreground = _textBrush;
-            grid.RowBackground = new SolidColorBrush(Color.FromRgb(20, 31, 54));
-            grid.AlternatingRowBackground = new SolidColorBrush(Color.FromRgb(24, 36, 62));
+            grid.RowBackground = _softPanelBackground;
+            grid.AlternatingRowBackground = _panelBackground;
             grid.GridLinesVisibility = DataGridGridLinesVisibility.None;
             grid.Columns.Add(TextColumn("Ad", "DisplayName", 2));
             grid.Columns.Add(TextColumn("Süre", "Duration", 1));
@@ -532,6 +518,8 @@ namespace MySesiMetneDonusturme
             StackPanel toolbar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
             _searchBox = new TextBox { Width = 160, MinHeight = 30, Margin = new Thickness(0, 0, 8, 0), ToolTip = "Kelime bul" };
             _replaceBox = new TextBox { Width = 160, MinHeight = 30, Margin = new Thickness(0, 0, 8, 0), ToolTip = "Değiştir" };
+            StyleTextBox(_searchBox);
+            StyleTextBox(_replaceBox);
             toolbar.Children.Add(_searchBox);
             toolbar.Children.Add(CreateGhostButton("Bul", delegate { FindInTranscript(); }));
             toolbar.Children.Add(_replaceBox);
@@ -553,9 +541,9 @@ namespace MySesiMetneDonusturme
             _transcriptBox.TextWrapping = TextWrapping.Wrap;
             _transcriptBox.FontFamily = new FontFamily("Consolas");
             _transcriptBox.FontSize = 14;
-            _transcriptBox.Background = new SolidColorBrush(Color.FromRgb(7, 12, 24));
+            _transcriptBox.Background = _inputBackground;
             _transcriptBox.Foreground = _textBrush;
-            _transcriptBox.BorderBrush = new SolidColorBrush(Color.FromRgb(51, 65, 85));
+            _transcriptBox.BorderBrush = _borderBrush;
             _transcriptBox.TextChanged += delegate
             {
                 MediaJob job = SelectedJob();
@@ -624,6 +612,10 @@ namespace MySesiMetneDonusturme
             }
 
             SaveSettingsFromControls();
+            if (!await EnsureTranscriptionToolsReadyAsync("Ses/video metne dönüştürme için ücretsiz yerel araçlar indirilsin mi?"))
+            {
+                return;
+            }
             _cancelSource = new CancellationTokenSource();
             try
             {
@@ -688,6 +680,10 @@ namespace MySesiMetneDonusturme
                 MessageBox.Show("Lütfen YouTube bağlantısı yapıştırın.", "YouTube", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
+            if (!await EnsureYouTubeToolsReadyAsync("YouTube bilgisi almak için eksik araçlar indirilsin mi?"))
+            {
+                return;
+            }
 
             try
             {
@@ -730,6 +726,10 @@ namespace MySesiMetneDonusturme
 
             MessageBoxResult consent = MessageBox.Show("Bu içeriği indirme ve metne dönüştürme hakkınız olduğunu onaylıyor musunuz?", "Telif ve izin uyarısı", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (consent != MessageBoxResult.Yes) return;
+            if (!await EnsureToolsReadyAsync("YouTube sesini metne çevirmek için gerekli ücretsiz araçlar indirilsin mi?"))
+            {
+                return;
+            }
 
             if (_currentMetadata == null || !String.Equals(_currentMetadata.RawUrl, url, StringComparison.OrdinalIgnoreCase))
             {
@@ -769,6 +769,75 @@ namespace MySesiMetneDonusturme
             {
                 _cancelSource.Cancel();
                 UpdateStatus("İptal isteği gönderildi");
+            }
+        }
+
+        private async Task<bool> EnsureToolsReadyAsync(string prompt)
+        {
+            if (_toolInstallerService.HasTranscriptionTools() && _toolInstallerService.HasYouTubeTools())
+            {
+                return true;
+            }
+
+            MessageBoxResult result = MessageBox.Show(prompt + "\n\nAraçlar resmi kaynaklardan indirilir ve kullanıcı profilinizde saklanır.", "Araçları hazırla", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (result != MessageBoxResult.Yes) return false;
+
+            try
+            {
+                IProgress<string> progress = new Progress<string>(delegate(string message) { UpdateStatus(message); });
+                await _toolInstallerService.EnsureAllAsync(progress, CancellationToken.None);
+                UpdateStatus("Araçlar hazır");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Arac kurulumu basarisiz", ex);
+                MessageBox.Show("Gerekli araçlar indirilemedi. İnternet bağlantısını kontrol edip tekrar deneyin.", "Araçları hazırla", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+        }
+
+        private async Task<bool> EnsureYouTubeToolsReadyAsync(string prompt)
+        {
+            if (_toolInstallerService.HasYouTubeTools()) return true;
+
+            MessageBoxResult result = MessageBox.Show(prompt + "\n\nYouTube için yt-dlp ve FFmpeg resmi kaynaklardan indirilecek.", "YouTube araçları", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (result != MessageBoxResult.Yes) return false;
+
+            try
+            {
+                IProgress<string> progress = new Progress<string>(delegate(string message) { UpdateStatus(message); });
+                await _toolInstallerService.EnsureYouTubeAsync(progress, CancellationToken.None);
+                UpdateStatus("YouTube araçları hazır");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("YouTube arac kurulumu basarisiz", ex);
+                MessageBox.Show("YouTube araçları indirilemedi. İnternet bağlantısını kontrol edip tekrar deneyin.", "YouTube araçları", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+        }
+
+        private async Task<bool> EnsureTranscriptionToolsReadyAsync(string prompt)
+        {
+            if (_toolInstallerService.HasTranscriptionTools()) return true;
+
+            MessageBoxResult result = MessageBox.Show(prompt + "\n\nWhisper, FFmpeg ve bir Türkçe uyumlu model resmi kaynaklardan indirilecek.", "Transkripsiyon araçları", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (result != MessageBoxResult.Yes) return false;
+
+            try
+            {
+                IProgress<string> progress = new Progress<string>(delegate(string message) { UpdateStatus(message); });
+                await _toolInstallerService.EnsureTranscriptionAsync(progress, CancellationToken.None);
+                UpdateStatus("Transkripsiyon araçları hazır");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Transkripsiyon arac kurulumu basarisiz", ex);
+                MessageBox.Show("Transkripsiyon araçları indirilemedi. İnternet bağlantısını kontrol edip tekrar deneyin.", "Transkripsiyon araçları", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
             }
         }
 
@@ -991,6 +1060,152 @@ namespace MySesiMetneDonusturme
             dialog.ShowDialog();
         }
 
+        private Border CreateHeroSlider()
+        {
+            Border hero = PanelBorder();
+            hero.Height = 330;
+            hero.Padding = new Thickness(30);
+            hero.Margin = new Thickness(0, 0, 0, 4);
+            hero.ClipToBounds = true;
+
+            ImageBrush imageBrush = LoadHeroBrush();
+            if (imageBrush != null)
+            {
+                hero.Background = imageBrush;
+                DoubleAnimation pulse = new DoubleAnimation(0.78, 1.0, TimeSpan.FromSeconds(4));
+                pulse.AutoReverse = true;
+                pulse.RepeatBehavior = RepeatBehavior.Forever;
+                imageBrush.BeginAnimation(Brush.OpacityProperty, pulse);
+            }
+            else
+            {
+                hero.Background = CreateAccentBrush();
+            }
+
+            Grid grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(320) });
+            hero.Child = grid;
+
+            Border shade = new Border { Background = new SolidColorBrush(Color.FromArgb(_settings.DarkTheme ? (byte)145 : (byte)80, 3, 7, 18)), CornerRadius = new CornerRadius(8) };
+            Grid.SetColumnSpan(shade, 2);
+            grid.Children.Add(shade);
+
+            StackPanel copy = new StackPanel { Margin = new Thickness(6, 6, 24, 6), VerticalAlignment = VerticalAlignment.Center };
+            TextBlock title = new TextBlock();
+            title.Text = "My - Sesi Metne Çevirme";
+            title.FontSize = 46;
+            title.FontWeight = FontWeights.Bold;
+            title.Foreground = Brushes.White;
+            title.TextWrapping = TextWrapping.Wrap;
+            title.RenderTransformOrigin = new Point(0.5, 0.5);
+            ScaleTransform scale = new ScaleTransform(1, 1);
+            title.RenderTransform = scale;
+            DoubleAnimation breathe = new DoubleAnimation(1.0, 1.035, TimeSpan.FromSeconds(2.4));
+            breathe.AutoReverse = true;
+            breathe.RepeatBehavior = RepeatBehavior.Forever;
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, breathe);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, breathe);
+            copy.Children.Add(title);
+
+            TextBlock subtitle = new TextBlock();
+            subtitle.Text = "Reklamsız, ücretsiz ve sınırsız ses metne dönüştürme deneyimi.";
+            subtitle.FontSize = 17;
+            subtitle.Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240));
+            subtitle.TextWrapping = TextWrapping.Wrap;
+            subtitle.Margin = new Thickness(0, 12, 0, 18);
+            copy.Children.Add(subtitle);
+
+            WrapPanel heroActions = new WrapPanel();
+            heroActions.Children.Add(CreatePrimaryButton("Dosya yükle", delegate { ShowFiles(); AddFilesFromDialog(); }));
+            heroActions.Children.Add(CreateGhostButton("YouTube", delegate { ShowYouTube(); }));
+            copy.Children.Add(heroActions);
+
+            Grid.SetColumn(copy, 0);
+            grid.Children.Add(copy);
+
+            StackPanel visual = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+            visual.Children.Add(CreateAudioBars(270, 120));
+            TextBlock note = new TextBlock { Text = "AI ses dalgası", Foreground = Brushes.White, Opacity = 0.82, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
+            visual.Children.Add(note);
+            Grid.SetColumn(visual, 1);
+            grid.Children.Add(visual);
+
+            return hero;
+        }
+
+        private StackPanel CreateAudioBars(double width, double height)
+        {
+            StackPanel bars = new StackPanel { Orientation = Orientation.Horizontal, Width = width, Height = height, VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Center };
+            for (int i = 0; i < 18; i++)
+            {
+                Border bar = new Border();
+                bar.Width = Math.Max(5, (width / 24));
+                bar.Height = 20 + _random.Next(12, (int)Math.Max(22, height - 14));
+                bar.Margin = new Thickness(3, 0, 3, 0);
+                bar.VerticalAlignment = VerticalAlignment.Bottom;
+                bar.CornerRadius = new CornerRadius(4);
+                bar.Background = i % 2 == 0 ? _accentBrush : new SolidColorBrush(Color.FromRgb(192, 132, 252));
+                DoubleAnimation animation = new DoubleAnimation(16 + _random.Next(0, 18), height - _random.Next(10, 36), TimeSpan.FromMilliseconds(650 + _random.Next(0, 900)));
+                animation.AutoReverse = true;
+                animation.RepeatBehavior = RepeatBehavior.Forever;
+                bar.BeginAnimation(FrameworkElement.HeightProperty, animation);
+                bars.Children.Add(bar);
+            }
+            return bars;
+        }
+
+        private ImageBrush LoadHeroBrush()
+        {
+            string[] candidates = new string[]
+            {
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Hero.png"),
+                Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Hero.png")
+            };
+
+            foreach (string path in candidates)
+            {
+                if (!File.Exists(path)) continue;
+                BitmapImage image = new BitmapImage();
+                image.BeginInit();
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.UriSource = new Uri(path, UriKind.Absolute);
+                image.EndInit();
+                return new ImageBrush(image) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Center };
+            }
+            return null;
+        }
+
+        private void ApplyThemePalette()
+        {
+            if (_settings != null && !_settings.DarkTheme)
+            {
+                _pageBackground = new SolidColorBrush(Color.FromRgb(244, 247, 252));
+                _panelBackground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
+                _softPanelBackground = new SolidColorBrush(Color.FromRgb(231, 238, 249));
+                _textBrush = new SolidColorBrush(Color.FromRgb(15, 23, 42));
+                _mutedBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105));
+                _inputBackground = new SolidColorBrush(Color.FromRgb(255, 255, 255));
+                _borderBrush = new SolidColorBrush(Color.FromRgb(148, 163, 184));
+                _headerBackground = new SolidColorBrush(Color.FromRgb(226, 232, 240));
+            }
+            else
+            {
+                _pageBackground = new SolidColorBrush(Color.FromRgb(8, 11, 24));
+                _panelBackground = new SolidColorBrush(Color.FromRgb(17, 24, 43));
+                _softPanelBackground = new SolidColorBrush(Color.FromRgb(29, 40, 68));
+                _textBrush = new SolidColorBrush(Color.FromRgb(248, 250, 252));
+                _mutedBrush = new SolidColorBrush(Color.FromRgb(203, 213, 225));
+                _inputBackground = new SolidColorBrush(Color.FromRgb(10, 15, 30));
+                _borderBrush = new SolidColorBrush(Color.FromRgb(71, 92, 128));
+                _headerBackground = new SolidColorBrush(Color.FromRgb(10, 16, 31));
+            }
+
+            _accentBrush = CreateAccentBrush();
+            Background = _pageBackground;
+            Foreground = _textBrush;
+        }
+
         private void OnDragOver(object sender, DragEventArgs e)
         {
             e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
@@ -1076,25 +1291,28 @@ namespace MySesiMetneDonusturme
             outer.Child = stack;
 
             Border mark = new Border();
-            mark.Width = 58;
-            mark.Height = 58;
-            mark.CornerRadius = new CornerRadius(12);
+            mark.Width = 82;
+            mark.Height = 82;
+            mark.CornerRadius = new CornerRadius(20);
             mark.Background = CreateAccentBrush();
             mark.HorizontalAlignment = HorizontalAlignment.Left;
-            TextBlock initials = new TextBlock();
-            initials.Text = "MY";
-            initials.FontSize = 22;
-            initials.FontWeight = FontWeights.Bold;
-            initials.Foreground = Brushes.White;
-            initials.HorizontalAlignment = HorizontalAlignment.Center;
-            initials.VerticalAlignment = VerticalAlignment.Center;
-            mark.Child = initials;
+            mark.RenderTransformOrigin = new Point(0.5, 0.5);
+            ScaleTransform markScale = new ScaleTransform(1, 1);
+            mark.RenderTransform = markScale;
+            DoubleAnimation markPulse = new DoubleAnimation(1, 1.06, TimeSpan.FromSeconds(2));
+            markPulse.AutoReverse = true;
+            markPulse.RepeatBehavior = RepeatBehavior.Forever;
+            markScale.BeginAnimation(ScaleTransform.ScaleXProperty, markPulse);
+            markScale.BeginAnimation(ScaleTransform.ScaleYProperty, markPulse);
+
+            Image icon = new Image { Source = LoadWindowIcon(), Width = 62, Height = 62, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            mark.Child = icon;
             stack.Children.Add(mark);
 
             TextBlock title = new TextBlock();
-            title.Text = "My Sesi Metne\nDönüştürme";
-            title.FontSize = 18;
-            title.FontWeight = FontWeights.SemiBold;
+            title.Text = "My - Sesi\nMetne Çevirme";
+            title.FontSize = 21;
+            title.FontWeight = FontWeights.Bold;
             title.Foreground = _textBrush;
             title.Margin = new Thickness(0, 12, 0, 0);
             stack.Children.Add(title);
@@ -1132,7 +1350,7 @@ namespace MySesiMetneDonusturme
             Button button = BasicButton(text);
             button.Background = _softPanelBackground;
             button.Foreground = _textBrush;
-            button.BorderBrush = new SolidColorBrush(Color.FromRgb(63, 82, 115));
+            button.BorderBrush = _borderBrush;
             button.Click += delegate { action(); };
             return button;
         }
@@ -1148,6 +1366,16 @@ namespace MySesiMetneDonusturme
             button.FontWeight = FontWeights.SemiBold;
             button.Cursor = Cursors.Hand;
             return button;
+        }
+
+        private void StyleTextBox(TextBox box)
+        {
+            if (box == null) return;
+            box.Background = _inputBackground;
+            box.Foreground = _textBrush;
+            box.CaretBrush = _accentBrush;
+            box.BorderBrush = _borderBrush;
+            box.Padding = new Thickness(8, 5, 8, 5);
         }
 
         private Border HomeCard(string title, string text)
@@ -1195,8 +1423,8 @@ namespace MySesiMetneDonusturme
             grid.Margin = new Thickness(0, 8, 0, 12);
             grid.Background = Brushes.Transparent;
             grid.Foreground = _textBrush;
-            grid.RowBackground = new SolidColorBrush(Color.FromRgb(20, 31, 54));
-            grid.AlternatingRowBackground = new SolidColorBrush(Color.FromRgb(24, 36, 62));
+            grid.RowBackground = _softPanelBackground;
+            grid.AlternatingRowBackground = _panelBackground;
             grid.GridLinesVisibility = DataGridGridLinesVisibility.None;
             grid.Columns.Add(TextColumn("Bileşen", "Name", 1));
             grid.Columns.Add(TextColumn("Durum", "Found", 1));
@@ -1355,7 +1583,7 @@ namespace MySesiMetneDonusturme
         {
             Border border = new Border();
             border.Background = _panelBackground;
-            border.BorderBrush = new SolidColorBrush(Color.FromRgb(38, 54, 85));
+            border.BorderBrush = _borderBrush;
             border.BorderThickness = new Thickness(1);
             border.CornerRadius = new CornerRadius(8);
             return border;
@@ -1392,10 +1620,40 @@ namespace MySesiMetneDonusturme
             LinearGradientBrush brush = new LinearGradientBrush();
             brush.StartPoint = new Point(0, 0);
             brush.EndPoint = new Point(1, 1);
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(3, 7, 18), 0));
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(17, 24, 39), 0.5));
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(30, 41, 59), 1));
+            if (_settings != null && !_settings.DarkTheme)
+            {
+                brush.GradientStops.Add(new GradientStop(Color.FromRgb(255, 255, 255), 0));
+                brush.GradientStops.Add(new GradientStop(Color.FromRgb(226, 232, 240), 0.55));
+                brush.GradientStops.Add(new GradientStop(Color.FromRgb(219, 234, 254), 1));
+            }
+            else
+            {
+                brush.GradientStops.Add(new GradientStop(Color.FromRgb(3, 7, 18), 0));
+                brush.GradientStops.Add(new GradientStop(Color.FromRgb(17, 24, 39), 0.5));
+                brush.GradientStops.Add(new GradientStop(Color.FromRgb(30, 41, 59), 1));
+            }
             return brush;
+        }
+
+        private ImageSource LoadWindowIcon()
+        {
+            string[] candidates = new string[]
+            {
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "AppIcon.ico"),
+                Path.Combine(Directory.GetCurrentDirectory(), "Assets", "AppIcon.ico")
+            };
+            foreach (string path in candidates)
+            {
+                if (!File.Exists(path)) continue;
+                try
+                {
+                    return BitmapFrame.Create(new Uri(path, UriKind.Absolute));
+                }
+                catch
+                {
+                }
+            }
+            return CreateWindowIcon();
         }
 
         private ImageSource CreateWindowIcon()

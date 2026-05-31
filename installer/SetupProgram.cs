@@ -104,6 +104,7 @@ namespace MySesiMetneDonusturmeSetup
             shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, new object[] { targetPath });
             shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { workingDirectory });
             shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { "My Sesi Metne Donusturme" });
+            shortcutType.InvokeMember("IconLocation", BindingFlags.SetProperty, null, shortcut, new object[] { targetPath + ",0" });
             shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
         }
     }

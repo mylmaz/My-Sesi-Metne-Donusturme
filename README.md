@@ -17,6 +17,7 @@ Uygulama; ses/video dosyalarını ve kullanıcının indirme hakkı olan YouTube
 - PDF, Word `.docx`, TXT, SRT ve VTT dışa aktarma
 - Yerel ayarlar, işlem geçmişi ve logs klasörü
 - İlk açılışta gizlilik/kullanım bilgilendirmesi
+- AI/müzik temalı ana sayfa, animasyonlu ses dalgaları ve açık/koyu tema
 
 ## Desteklenen Formatlar
 
@@ -24,7 +25,9 @@ Uygulama; ses/video dosyalarını ve kullanıcının indirme hakkı olan YouTube
 
 ## Yerel Araçlar
 
-Transkripsiyonun gerçekten çalışması için aşağıdaki ücretsiz yerel araçlar uygulamanın yanında bulunmalıdır:
+Transkripsiyon için FFmpeg, whisper.cpp, Whisper model dosyası ve yt-dlp gerekir. Uygulama artık eksik araçları işlem başlatırken tek tıkla resmi kaynaklardan indirebilir ve `%LOCALAPPDATA%\MySesiMetneDonusturme\Tools` altında saklar.
+
+İsterseniz araçları uygulama yanına da koyabilirsiniz:
 
 ```text
 Tools/
@@ -35,13 +38,19 @@ Tools/
     whisper-cli.exe
   models/
     ggml-base.bin
+    ggml-tiny.bin
+    ggml-base.bin
     ggml-small.bin
-    ggml-medium.bin
   yt-dlp/
     yt-dlp.exe
 ```
 
-Uygulama açıldığında Ayarlar ekranında bu bileşenleri kontrol eder. Eksik araç varsa kullanıcıya teknik olmayan Türkçe uyarı gösterilir. Bu dosyalar lisans ve boyut nedenleriyle repoya eklenmez.
+İndirme kaynakları:
+
+- yt-dlp: `https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe`
+- whisper.cpp: `https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip`
+- FFmpeg: `https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip`
+- Whisper model: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin`
 
 ## Build
 
@@ -90,7 +99,7 @@ Script setup dosyasını masaüstüne ve `MySesiMetneDonusturme_Build` klasörü
 ## Kullanım
 
 1. Uygulamayı açın.
-2. Ayarlar ekranında FFmpeg, Whisper ve yt-dlp durumunu kontrol edin.
+2. İlk işlemde araç indirme sorusu gelirse onaylayın.
 3. Dosya Yükle ekranında dosya seçin veya sürükleyip bırakın.
 4. Dil, model ve metin düzenleme seçeneklerini seçin.
 5. Başlat düğmesine basın.
@@ -103,14 +112,15 @@ YouTube özelliğinde yalnızca indirme ve yazıya çevirme hakkınız olan içe
 - Ayarlar ve geçmiş: `%LOCALAPPDATA%\MySesiMetneDonusturme`
 - Loglar: `%LOCALAPPDATA%\MySesiMetneDonusturme\logs`
 - Geçici işler: `%LOCALAPPDATA%\MySesiMetneDonusturme\work`
+- Otomatik indirilen araçlar: `%LOCALAPPDATA%\MySesiMetneDonusturme\Tools`
 - Varsayılan çıktı klasörü: Belgeler altında `My Sesi Metne Donusturme Ciktilar`
 
 Varsayılan tasarım yereldir. Dosyalar kullanıcı açıkça YouTube linki işlediğinde internetten veri indirir; ses/video dosyaları ücretli bulut API'lerine gönderilmez.
 
 ## Bilinen Sınırlamalar
 
-- Gerçek transkripsiyon için `whisper-cli.exe`, model dosyaları ve FFmpeg gereklidir.
-- YouTube iş akışı için `yt-dlp.exe` ve internet bağlantısı gerekir.
+- İlk transkripsiyon öncesinde araç/model indirme süresi internet hızına göre uzayabilir.
+- YouTube iş akışı için internet bağlantısı gerekir.
 - PDF dışa aktarma gömülü PDF kütüphanesi kullanmadan üretilir; Türkçe karakterler PDF içinde okunabilir ASCII karşılıklarına sadeleştirilir. DOCX ve TXT çıktıları Türkçe karakterleri korur.
 - Inno Setup bu bilgisayarda kurulu değil; bu nedenle Inno tabanlı alternatif paket test edilmedi. Dahili .NET setup paketi üretilir.
 - Çok uzun dosyalarda işlem süresi tamamen bilgisayarın CPU/RAM/disk performansına bağlıdır.
@@ -122,3 +132,5 @@ Remote yetkisi tanımlı değilse `GITHUB_UPLOAD_COMMANDS.md` dosyasındaki komu
 ```text
 My-Sesi-Metne-Donusturme
 ```
+
+Hesap: `@vildancam`
