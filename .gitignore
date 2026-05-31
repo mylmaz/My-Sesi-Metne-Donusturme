@@ -1,0 +1,17 @@
+bin/
+obj/
+build/
+dist/
+release/
+*.user
+*.suo
+*.cache
+*.log
+*.tmp
+.vs/
+Tools/ffmpeg/*.exe
+Tools/ffmpeg/*.dll
+Tools/whisper/*.exe
+Tools/whisper/*.dll
+Tools/models/*.bin
+Tools/yt-dlp/*.exe
