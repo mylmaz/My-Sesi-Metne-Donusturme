@@ -179,7 +179,7 @@ namespace MySesiMetneDonusturme
             AppSettings settings = new AppSettings();
             settings.OutputFolder = AppPaths.DefaultOutputRoot;
             settings.DefaultLanguage = "Türkçe";
-            settings.DefaultModel = "Dengeli";
+            settings.DefaultModel = "Yüksek Doğruluk";
             settings.DarkTheme = true;
             settings.AutoSave = true;
             settings.TimestampsEnabled = true;
@@ -197,7 +197,8 @@ namespace MySesiMetneDonusturme
             if (settings == null) return;
             if (String.IsNullOrWhiteSpace(settings.OutputFolder)) settings.OutputFolder = AppPaths.DefaultOutputRoot;
             if (String.IsNullOrWhiteSpace(settings.DefaultLanguage)) settings.DefaultLanguage = "Türkçe";
-            if (String.IsNullOrWhiteSpace(settings.DefaultModel)) settings.DefaultModel = "Dengeli";
+            if (String.IsNullOrWhiteSpace(settings.DefaultModel)) settings.DefaultModel = "Yüksek Doğruluk";
+            if (String.Equals(settings.DefaultModel, "Dengeli", StringComparison.OrdinalIgnoreCase)) settings.DefaultModel = "Yüksek Doğruluk";
         }
     }
 
@@ -335,7 +336,7 @@ namespace MySesiMetneDonusturme
             Add(items, "FFmpeg", FindTool("ffmpeg", new string[] { "ffmpeg.exe" }), "Tools\\ffmpeg\\ffmpeg.exe");
             Add(items, "FFprobe", FindTool("ffmpeg", new string[] { "ffprobe.exe" }), "Tools\\ffmpeg\\ffprobe.exe");
             Add(items, "Whisper", FindTool("whisper", new string[] { "whisper-cli.exe", "main.exe" }), "Tools\\whisper\\whisper-cli.exe");
-            Add(items, "Whisper model", FindModel("Dengeli"), "Tools\\models\\ggml-base.bin");
+            Add(items, "Whisper model", FindModel("Yüksek Doğruluk"), "Tools\\models\\ggml-small.bin");
             Add(items, "yt-dlp", FindTool("yt-dlp", new string[] { "yt-dlp.exe" }), "Tools\\yt-dlp\\yt-dlp.exe");
             return items;
         }
@@ -362,15 +363,22 @@ namespace MySesiMetneDonusturme
 
         public string FindModel(string modelChoice)
         {
-            string name = "ggml-base.bin";
-            if (String.Equals(modelChoice, "Hızlı", StringComparison.OrdinalIgnoreCase)) name = "ggml-tiny.bin";
-            if (String.Equals(modelChoice, "Yüksek Doğruluk", StringComparison.OrdinalIgnoreCase)) name = "ggml-small.bin";
+            string name = ModelFileName(modelChoice);
 
             foreach (string root in GetToolRoots())
             {
                 string models = Path.Combine(root, "Tools", "models");
                 string exact = Path.Combine(models, name);
                 if (File.Exists(exact)) return exact;
+            }
+            return null;
+        }
+
+        public string FindAnyModel()
+        {
+            foreach (string root in GetToolRoots())
+            {
+                string models = Path.Combine(root, "Tools", "models");
                 if (Directory.Exists(models))
                 {
                     string first = Directory.GetFiles(models, "*.bin").FirstOrDefault();
@@ -378,6 +386,13 @@ namespace MySesiMetneDonusturme
                 }
             }
             return null;
+        }
+
+        public static string ModelFileName(string modelChoice)
+        {
+            if (String.Equals(modelChoice, "Hızlı", StringComparison.OrdinalIgnoreCase)) return "ggml-tiny.bin";
+            if (String.Equals(modelChoice, "Dengeli", StringComparison.OrdinalIgnoreCase)) return "ggml-base.bin";
+            return "ggml-small.bin";
         }
 
         public async Task<string> GetDurationAsync(string filePath)
@@ -465,7 +480,9 @@ namespace MySesiMetneDonusturme
         private const string YtDlpUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
         private const string WhisperZipUrl = "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip";
         private const string FfmpegZipUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+        private const string TinyModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
         private const string BaseModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+        private const string SmallModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
 
         private readonly DependencyService _dependencies;
 
@@ -476,9 +493,14 @@ namespace MySesiMetneDonusturme
 
         public bool HasTranscriptionTools()
         {
+            return HasTranscriptionTools("Yüksek Doğruluk");
+        }
+
+        public bool HasTranscriptionTools(string modelChoice)
+        {
             return !String.IsNullOrEmpty(_dependencies.FindFfmpeg()) &&
                    !String.IsNullOrEmpty(_dependencies.FindWhisper()) &&
-                   !String.IsNullOrEmpty(_dependencies.FindModel("Dengeli"));
+                   !String.IsNullOrEmpty(_dependencies.FindModel(modelChoice));
         }
 
         public bool HasYouTubeTools()
@@ -499,7 +521,7 @@ namespace MySesiMetneDonusturme
                 EnsureYtDlp(tools, progress, token);
                 EnsureFfmpeg(tools, download, progress, token);
                 EnsureWhisper(tools, download, progress, token);
-                EnsureBaseModel(tools, progress, token);
+                EnsureModel(tools, "Yüksek Doğruluk", progress, token);
 
                 Report(progress, "Araçlar hazır.");
             }, token);
@@ -519,7 +541,7 @@ namespace MySesiMetneDonusturme
             }, token);
         }
 
-        public async Task EnsureTranscriptionAsync(IProgress<string> progress, CancellationToken token)
+        public async Task EnsureTranscriptionAsync(string modelChoice, IProgress<string> progress, CancellationToken token)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             await Task.Factory.StartNew(delegate
@@ -529,7 +551,7 @@ namespace MySesiMetneDonusturme
                 AppPaths.EnsureDirectory(download);
                 EnsureFfmpeg(tools, download, progress, token);
                 EnsureWhisper(tools, download, progress, token);
-                EnsureBaseModel(tools, progress, token);
+                EnsureModel(tools, modelChoice, progress, token);
                 Report(progress, "Transkripsiyon araçları hazır.");
             }, token);
         }
@@ -559,11 +581,19 @@ namespace MySesiMetneDonusturme
             ExtractWhisper(zip, Path.Combine(tools, "whisper"));
         }
 
-        private void EnsureBaseModel(string tools, IProgress<string> progress, CancellationToken token)
+        private void EnsureModel(string tools, string modelChoice, IProgress<string> progress, CancellationToken token)
         {
-            if (!String.IsNullOrEmpty(_dependencies.FindModel("Dengeli"))) return;
-            Report(progress, "Whisper modeli indiriliyor...");
-            DownloadFile(BaseModelUrl, Path.Combine(tools, "models", "ggml-base.bin"), token);
+            if (!String.IsNullOrEmpty(_dependencies.FindModel(modelChoice))) return;
+            string fileName = DependencyService.ModelFileName(modelChoice);
+            Report(progress, "Whisper modeli indiriliyor: " + modelChoice);
+            DownloadFile(ModelUrl(fileName), Path.Combine(tools, "models", fileName), token);
+        }
+
+        private static string ModelUrl(string fileName)
+        {
+            if (String.Equals(fileName, "ggml-tiny.bin", StringComparison.OrdinalIgnoreCase)) return TinyModelUrl;
+            if (String.Equals(fileName, "ggml-base.bin", StringComparison.OrdinalIgnoreCase)) return BaseModelUrl;
+            return SmallModelUrl;
         }
 
         private static void DownloadFile(string url, string destination, CancellationToken token)
@@ -736,7 +766,7 @@ namespace MySesiMetneDonusturme
             }
             if (String.IsNullOrEmpty(model))
             {
-                throw new UserVisibleException("Whisper model dosyası bulunamadı. Tools\\models klasörüne ggml-base.bin, ggml-small.bin veya ggml-medium.bin ekleyin.");
+                throw new UserVisibleException("Seçili Whisper model dosyası bulunamadı. Araçları hazırla düğmesini kullanarak modeli indirin.");
             }
             if (String.IsNullOrEmpty(ffmpeg))
             {
@@ -823,6 +853,14 @@ namespace MySesiMetneDonusturme
             args.Append(" -f ").Append(ProcessRunner.Quote(wav));
             args.Append(" -of ").Append(ProcessRunner.Quote(outBase));
             args.Append(" -otxt -osrt -ovtt");
+            args.Append(" -t ").Append(Math.Max(1, Environment.ProcessorCount - 1).ToString(CultureInfo.InvariantCulture));
+            args.Append(" -bs 5 -bo 5");
+            args.Append(" --prompt ").Append(ProcessRunner.Quote("Türkçe konuşma metni. Özel adları, ekleri, sayıları ve noktalama işaretlerini dikkatli yaz. Eksik kelime bırakma."));
+
+            if (String.Equals(options.Model, "Yüksek Doğruluk", StringComparison.OrdinalIgnoreCase))
+            {
+                args.Append(" -mc 256 -sow");
+            }
 
             string code = LanguageCode(options.Language);
             if (!String.IsNullOrEmpty(code))
@@ -931,10 +969,30 @@ namespace MySesiMetneDonusturme
             {
                 result = ImprovePunctuation(result);
             }
+            result = NormalizeTranscriptText(result);
             if (options.ParagraphMode)
             {
                 result = Regex.Replace(result, @"(?<=[.!?])\s+(?=\[?\d{0,2}:?\d{2}|[A-ZÇĞİÖŞÜ])", Environment.NewLine + Environment.NewLine);
             }
+            return result.Trim();
+        }
+
+        private static string NormalizeTranscriptText(string text)
+        {
+            if (String.IsNullOrWhiteSpace(text)) return "";
+            string result = text;
+            result = Regex.Replace(result, @"[ \t]+", " ");
+            result = Regex.Replace(result, @"\s+([,.;:!?])", "$1");
+            result = Regex.Replace(result, @"([,.;:!?])(?=\S)", "$1 ");
+            result = Regex.Replace(result, @"\[\s*(\d{2}:\d{2}:\d{2})\s*\]", "[$1]");
+            result = Regex.Replace(result, @"(?m)^(\[\d{2}:\d{2}:\d{2}\]\s*)([a-zçğıöşü])", delegate(Match match)
+            {
+                return match.Groups[1].Value + match.Groups[2].Value.ToUpper(new CultureInfo("tr-TR"));
+            });
+            result = Regex.Replace(result, @"(?<=[.!?]\s)([a-zçğıöşü])", delegate(Match match)
+            {
+                return match.Groups[1].Value.ToUpper(new CultureInfo("tr-TR"));
+            });
             return result.Trim();
         }
 

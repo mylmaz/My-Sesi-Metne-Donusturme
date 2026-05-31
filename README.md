@@ -12,6 +12,7 @@ Uygulama; ses/video dosyalarını ve kullanıcının indirme hakkı olan YouTube
 - Dil seçimi: Türkçe, Otomatik Algıla, İngilizce, Almanca, Arapça
 - Model seçimi: Hızlı, Dengeli, Yüksek Doğruluk
 - Zaman damgası, paragraf düzenleme, dolgu kelimesi temizleme, noktalama iyileştirme
+- Yüksek doğruluk varsayılan model ayarı, beam-search odaklı Whisper parametreleri
 - İptal edilebilir arka plan işlemleri
 - Düzenlenebilir metin editörü, arama, değiştirme, tümünü kopyalama
 - PDF, Word `.docx`, TXT, SRT ve VTT dışa aktarma
@@ -38,9 +39,9 @@ Tools/
     whisper-cli.exe
   models/
     ggml-base.bin
-    ggml-tiny.bin
-    ggml-base.bin
-    ggml-small.bin
+    ggml-tiny.bin    # Hızlı
+    ggml-base.bin    # Dengeli
+    ggml-small.bin   # Yüksek Doğruluk
   yt-dlp/
     yt-dlp.exe
 ```
@@ -50,7 +51,9 @@ Tools/
 - yt-dlp: `https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe`
 - whisper.cpp: `https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip`
 - FFmpeg: `https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip`
-- Whisper model: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin`
+- Whisper hızlı model: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin`
+- Whisper dengeli model: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin`
+- Whisper yüksek doğruluk modeli: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin`
 
 ## Build
 
@@ -119,7 +122,8 @@ Varsayılan tasarım yereldir. Dosyalar kullanıcı açıkça YouTube linki işl
 
 ## Bilinen Sınırlamalar
 
-- İlk transkripsiyon öncesinde araç/model indirme süresi internet hızına göre uzayabilir.
+- İlk yüksek doğruluk transkripsiyonu öncesinde `ggml-small.bin` model indirme süresi internet hızına göre uzayabilir.
+- Harf/yazım doğruluğu ses kalitesine, arka plan gürültüsüne, konuşmacı netliğine ve model boyutuna bağlıdır; uygulama varsayılan olarak daha doğru model ve daha dikkatli Whisper ayarları kullanır.
 - YouTube iş akışı için internet bağlantısı gerekir.
 - PDF dışa aktarma gömülü PDF kütüphanesi kullanmadan üretilir; Türkçe karakterler PDF içinde okunabilir ASCII karşılıklarına sadeleştirilir. DOCX ve TXT çıktıları Türkçe karakterleri korur.
 - Inno Setup bu bilgisayarda kurulu değil; bu nedenle Inno tabanlı alternatif paket test edilmedi. Dahili .NET setup paketi üretilir.

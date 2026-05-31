@@ -268,7 +268,7 @@ namespace MySesiMetneDonusturme
             helpStack.Children.Add(WrapText("Varsayılan işlem yereldir. Bulut API, abonelik, kota ya da reklam sistemi kullanılmaz."));
             helpStack.Children.Add(SectionTitle("Müzik akışı"));
             helpStack.Children.Add(WrapText("Kuyruğa dosya ekleyin, Başlat düğmesine basın ve metni altta düzenleyin."));
-            helpStack.Children.Add(CreateAudioBars(260, 70));
+            helpStack.Children.Add(CreateWaveformPanel(260, 70));
             help.Child = helpStack;
             Grid.SetColumn(help, 1);
             middle.Children.Add(help);
@@ -384,6 +384,7 @@ namespace MySesiMetneDonusturme
             grid.RowBackground = _softPanelBackground;
             grid.AlternatingRowBackground = _panelBackground;
             grid.GridLinesVisibility = DataGridGridLinesVisibility.None;
+            StyleDataGrid(grid);
             grid.Columns.Add(TextColumn("Dosya", "FileName", 2));
             grid.Columns.Add(TextColumn("Tarih", "CreatedAt", 1));
             grid.Columns.Add(TextColumn("Süre", "Duration", 1));
@@ -498,6 +499,7 @@ namespace MySesiMetneDonusturme
             grid.RowBackground = _softPanelBackground;
             grid.AlternatingRowBackground = _panelBackground;
             grid.GridLinesVisibility = DataGridGridLinesVisibility.None;
+            StyleDataGrid(grid);
             grid.Columns.Add(TextColumn("Ad", "DisplayName", 2));
             grid.Columns.Add(TextColumn("Süre", "Duration", 1));
             grid.Columns.Add(TextColumn("Boyut", "SizeText", 1));
@@ -774,7 +776,7 @@ namespace MySesiMetneDonusturme
 
         private async Task<bool> EnsureToolsReadyAsync(string prompt)
         {
-            if (_toolInstallerService.HasTranscriptionTools() && _toolInstallerService.HasYouTubeTools())
+            if (_toolInstallerService.HasTranscriptionTools(CurrentOptions().Model) && _toolInstallerService.HasYouTubeTools())
             {
                 return true;
             }
@@ -821,15 +823,16 @@ namespace MySesiMetneDonusturme
 
         private async Task<bool> EnsureTranscriptionToolsReadyAsync(string prompt)
         {
-            if (_toolInstallerService.HasTranscriptionTools()) return true;
+            string modelChoice = CurrentOptions().Model;
+            if (_toolInstallerService.HasTranscriptionTools(modelChoice)) return true;
 
-            MessageBoxResult result = MessageBox.Show(prompt + "\n\nWhisper, FFmpeg ve bir Türkçe uyumlu model resmi kaynaklardan indirilecek.", "Transkripsiyon araçları", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            MessageBoxResult result = MessageBox.Show(prompt + "\n\nWhisper, FFmpeg ve seçili model indirilecek: " + modelChoice, "Transkripsiyon araçları", MessageBoxButton.YesNo, MessageBoxImage.Information);
             if (result != MessageBoxResult.Yes) return false;
 
             try
             {
                 IProgress<string> progress = new Progress<string>(delegate(string message) { UpdateStatus(message); });
-                await _toolInstallerService.EnsureTranscriptionAsync(progress, CancellationToken.None);
+                await _toolInstallerService.EnsureTranscriptionAsync(modelChoice, progress, CancellationToken.None);
                 UpdateStatus("Transkripsiyon araçları hazır");
                 return true;
             }
@@ -1063,8 +1066,8 @@ namespace MySesiMetneDonusturme
         private Border CreateHeroSlider()
         {
             Border hero = PanelBorder();
-            hero.Height = 330;
-            hero.Padding = new Thickness(30);
+            hero.Height = 310;
+            hero.Padding = new Thickness(28);
             hero.Margin = new Thickness(0, 0, 0, 4);
             hero.ClipToBounds = true;
 
@@ -1072,7 +1075,7 @@ namespace MySesiMetneDonusturme
             if (imageBrush != null)
             {
                 hero.Background = imageBrush;
-                DoubleAnimation pulse = new DoubleAnimation(0.78, 1.0, TimeSpan.FromSeconds(4));
+                DoubleAnimation pulse = new DoubleAnimation(0.84, 0.96, TimeSpan.FromSeconds(6));
                 pulse.AutoReverse = true;
                 pulse.RepeatBehavior = RepeatBehavior.Forever;
                 imageBrush.BeginAnimation(Brush.OpacityProperty, pulse);
@@ -1084,29 +1087,34 @@ namespace MySesiMetneDonusturme
 
             Grid grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(320) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(360) });
             hero.Child = grid;
 
-            Border shade = new Border { Background = new SolidColorBrush(Color.FromArgb(_settings.DarkTheme ? (byte)145 : (byte)80, 3, 7, 18)), CornerRadius = new CornerRadius(8) };
+            Border shade = new Border { Background = new SolidColorBrush(Color.FromArgb(_settings.DarkTheme ? (byte)170 : (byte)105, 3, 7, 18)), CornerRadius = new CornerRadius(8) };
             Grid.SetColumnSpan(shade, 2);
             grid.Children.Add(shade);
 
             StackPanel copy = new StackPanel { Margin = new Thickness(6, 6, 24, 6), VerticalAlignment = VerticalAlignment.Center };
             TextBlock title = new TextBlock();
             title.Text = "My - Sesi Metne Çevirme";
-            title.FontSize = 46;
+            title.FontSize = 42;
             title.FontWeight = FontWeights.Bold;
             title.Foreground = Brushes.White;
             title.TextWrapping = TextWrapping.Wrap;
-            title.RenderTransformOrigin = new Point(0.5, 0.5);
-            ScaleTransform scale = new ScaleTransform(1, 1);
-            title.RenderTransform = scale;
-            DoubleAnimation breathe = new DoubleAnimation(1.0, 1.035, TimeSpan.FromSeconds(2.4));
-            breathe.AutoReverse = true;
-            breathe.RepeatBehavior = RepeatBehavior.Forever;
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, breathe);
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty, breathe);
             copy.Children.Add(title);
+
+            Border titleLine = new Border();
+            titleLine.Height = 4;
+            titleLine.Width = 260;
+            titleLine.HorizontalAlignment = HorizontalAlignment.Left;
+            titleLine.Margin = new Thickness(0, 10, 0, 0);
+            titleLine.CornerRadius = new CornerRadius(3);
+            titleLine.Background = CreateAccentBrush();
+            DoubleAnimation linePulse = new DoubleAnimation(0.55, 1.0, TimeSpan.FromSeconds(2.8));
+            linePulse.AutoReverse = true;
+            linePulse.RepeatBehavior = RepeatBehavior.Forever;
+            titleLine.BeginAnimation(UIElement.OpacityProperty, linePulse);
+            copy.Children.Add(titleLine);
 
             TextBlock subtitle = new TextBlock();
             subtitle.Text = "Reklamsız, ücretsiz ve sınırsız ses metne dönüştürme deneyimi.";
@@ -1125,34 +1133,60 @@ namespace MySesiMetneDonusturme
             grid.Children.Add(copy);
 
             StackPanel visual = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-            visual.Children.Add(CreateAudioBars(270, 120));
-            TextBlock note = new TextBlock { Text = "AI ses dalgası", Foreground = Brushes.White, Opacity = 0.82, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
-            visual.Children.Add(note);
+            visual.Children.Add(CreateWaveformPanel(320, 145));
             Grid.SetColumn(visual, 1);
             grid.Children.Add(visual);
 
             return hero;
         }
 
-        private StackPanel CreateAudioBars(double width, double height)
+        private Canvas CreateWaveformPanel(double width, double height)
         {
-            StackPanel bars = new StackPanel { Orientation = Orientation.Horizontal, Width = width, Height = height, VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Center };
-            for (int i = 0; i < 18; i++)
+            Canvas canvas = new Canvas { Width = width, Height = height, ClipToBounds = true };
+            double mid = height / 2;
+            for (int layer = 0; layer < 3; layer++)
             {
-                Border bar = new Border();
-                bar.Width = Math.Max(5, (width / 24));
-                bar.Height = 20 + _random.Next(12, (int)Math.Max(22, height - 14));
-                bar.Margin = new Thickness(3, 0, 3, 0);
-                bar.VerticalAlignment = VerticalAlignment.Bottom;
-                bar.CornerRadius = new CornerRadius(4);
-                bar.Background = i % 2 == 0 ? _accentBrush : new SolidColorBrush(Color.FromRgb(192, 132, 252));
-                DoubleAnimation animation = new DoubleAnimation(16 + _random.Next(0, 18), height - _random.Next(10, 36), TimeSpan.FromMilliseconds(650 + _random.Next(0, 900)));
-                animation.AutoReverse = true;
-                animation.RepeatBehavior = RepeatBehavior.Forever;
-                bar.BeginAnimation(FrameworkElement.HeightProperty, animation);
-                bars.Children.Add(bar);
+                System.Windows.Shapes.Polyline line = new System.Windows.Shapes.Polyline();
+                line.StrokeThickness = layer == 1 ? 3.0 : 1.4;
+                line.Opacity = layer == 1 ? 0.95 : 0.5;
+                line.Stroke = layer == 0 ? new SolidColorBrush(Color.FromRgb(56, 189, 248)) : (layer == 1 ? new SolidColorBrush(Color.FromRgb(216, 180, 254)) : new SolidColorBrush(Color.FromRgb(34, 211, 238)));
+
+                PointCollection points = new PointCollection();
+                for (int i = 0; i <= 72; i++)
+                {
+                    double x = (width / 72.0) * i;
+                    double wave = Math.Sin((i * 0.38) + layer) * (18 + layer * 9);
+                    double fine = Math.Sin((i * 0.91) + (layer * 1.7)) * (7 + layer * 2);
+                    points.Add(new Point(x, mid + wave + fine));
+                }
+                line.Points = points;
+
+                TranslateTransform move = new TranslateTransform();
+                line.RenderTransform = move;
+                DoubleAnimation drift = new DoubleAnimation(-18 + layer * 7, 18 - layer * 4, TimeSpan.FromSeconds(2.8 + layer * 0.7));
+                drift.AutoReverse = true;
+                drift.RepeatBehavior = RepeatBehavior.Forever;
+                move.BeginAnimation(TranslateTransform.XProperty, drift);
+                canvas.Children.Add(line);
             }
-            return bars;
+
+            for (int i = 0; i < 7; i++)
+            {
+                System.Windows.Shapes.Ellipse dot = new System.Windows.Shapes.Ellipse();
+                dot.Width = 5 + (i % 3);
+                dot.Height = dot.Width;
+                dot.Fill = new SolidColorBrush(Color.FromRgb(125, 211, 252));
+                dot.Opacity = 0.72;
+                Canvas.SetLeft(dot, 18 + i * (width - 42) / 6);
+                Canvas.SetTop(dot, mid - 3 + Math.Sin(i) * 20);
+                DoubleAnimation blink = new DoubleAnimation(0.25, 0.95, TimeSpan.FromSeconds(1.2 + i * 0.18));
+                blink.AutoReverse = true;
+                blink.RepeatBehavior = RepeatBehavior.Forever;
+                dot.BeginAnimation(UIElement.OpacityProperty, blink);
+                canvas.Children.Add(dot);
+            }
+
+            return canvas;
         }
 
         private ImageBrush LoadHeroBrush()
@@ -1426,6 +1460,7 @@ namespace MySesiMetneDonusturme
             grid.RowBackground = _softPanelBackground;
             grid.AlternatingRowBackground = _panelBackground;
             grid.GridLinesVisibility = DataGridGridLinesVisibility.None;
+            StyleDataGrid(grid);
             grid.Columns.Add(TextColumn("Bileşen", "Name", 1));
             grid.Columns.Add(TextColumn("Durum", "Found", 1));
             grid.Columns.Add(TextColumn("Konum", "Path", 3));
@@ -1442,6 +1477,36 @@ namespace MySesiMetneDonusturme
             column.Width = new DataGridLength(star, DataGridLengthUnitType.Star);
             ElementStyleText(column);
             return column;
+        }
+
+        private void StyleDataGrid(DataGrid grid)
+        {
+            grid.Background = _panelBackground;
+            grid.Foreground = _textBrush;
+            grid.BorderBrush = _borderBrush;
+            grid.HorizontalGridLinesBrush = _borderBrush;
+            grid.VerticalGridLinesBrush = _borderBrush;
+
+            Style headerStyle = new Style(typeof(DataGridColumnHeader));
+            headerStyle.Setters.Add(new Setter(Control.BackgroundProperty, _headerBackground));
+            headerStyle.Setters.Add(new Setter(Control.ForegroundProperty, _textBrush));
+            headerStyle.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.Bold));
+            headerStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 7, 8, 7)));
+            headerStyle.Setters.Add(new Setter(Control.BorderBrushProperty, _borderBrush));
+            headerStyle.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0, 0, 1, 1)));
+            grid.ColumnHeaderStyle = headerStyle;
+
+            Style cellStyle = new Style(typeof(DataGridCell));
+            cellStyle.Setters.Add(new Setter(Control.ForegroundProperty, _textBrush));
+            cellStyle.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+            cellStyle.Setters.Add(new Setter(Control.BorderBrushProperty, _borderBrush));
+            cellStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 4, 6, 4)));
+            grid.CellStyle = cellStyle;
+
+            Style rowStyle = new Style(typeof(DataGridRow));
+            rowStyle.Setters.Add(new Setter(Control.ForegroundProperty, _textBrush));
+            rowStyle.Setters.Add(new Setter(Control.BorderBrushProperty, _borderBrush));
+            grid.RowStyle = rowStyle;
         }
 
         private void ElementStyleText(DataGridTextColumn column)
@@ -1477,6 +1542,9 @@ namespace MySesiMetneDonusturme
             combo.Width = 140;
             combo.MinHeight = 32;
             combo.Margin = new Thickness(0, 0, 12, 0);
+            combo.Background = _inputBackground;
+            combo.Foreground = _textBrush;
+            combo.BorderBrush = _borderBrush;
             foreach (string item in items) combo.Items.Add(item);
             combo.SelectedItem = items.Contains(selected) ? selected : items[0];
             return combo;

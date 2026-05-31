@@ -13,6 +13,10 @@ Tarih: 2026-05-31
 - Masaüstü build klasörü oluşturuldu: `MySesiMetneDonusturme_Build`
 - Uygulama gizli pencereyle kısa süre başlatıldı; startup crash görülmedi.
 - Eksik araçlar için otomatik indirme akışı eklendi: yt-dlp, FFmpeg, whisper.cpp ve `ggml-base.bin`.
+- Yüksek doğruluk varsayılan model yapıldı; seçili model dosyası yoksa işlem başlamadan indirme akışına yönlendirilir.
+- Whisper çağrısına beam-search/best-of, Türkçe prompt, işlemci thread ayarı ve yüksek doğrulukta bağlam/sözcük bölme parametreleri eklendi.
+- DataGrid başlık/hücre stilleri koyu temada okunur olacak şekilde zorlandı.
+- Ana sayfa animasyonu statik başlık + ince parlayan çizgiye çevrildi; eski bar tipi AI ses dalgası kaldırılıp çizgisel waveform animasyonu eklendi.
 - Ana sayfa AI/müzik görselli slider, animasyonlu ses dalgaları ve direkt erişim butonlarıyla yenilendi.
 - Dosya yükleme üst alanı taşmayı önlemek için sarmal buton/seçenek düzenine çevrildi.
 - Açık/koyu tema kaydedildiğinde arayüz yeniden uygulanacak şekilde düzeltildi.
@@ -33,4 +37,4 @@ Tarih: 2026-05-31
 
 ## Not
 
-Gerçek transkripsiyon testleri bu oturumda tamamlanamadı, çünkü araç/model indirmeleri büyük dosyalar içeriyor ve manuel medya dosyası sağlanmadı. Uygulama artık bu eksikleri işlem başlatırken resmi kaynaklardan indirecek şekilde yönlendirir. Dahili setup paketi oluşturuldu; yönetici izni gerektirdiği için gerçek kurulum çalıştırılmadı.
+Gerçek transkripsiyon testleri bu oturumda tamamlanamadı, çünkü yüksek doğruluk modeli büyük dosya içeriyor ve manuel medya dosyası sağlanmadı. Uygulama artık seçili modeli işlem başlatırken resmi kaynaklardan indirecek şekilde yönlendirir. Dahili setup paketi oluşturuldu; yönetici izni gerektirdiği için gerçek kurulum çalıştırılmadı.
