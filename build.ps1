@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $src = Join-Path $root "src\MySesiMetneDonusturme"
 $out = Join-Path $root "build\bin"
+$dist = Join-Path $root "dist"
 $desktopBuild = Join-Path ([Environment]::GetFolderPath("DesktopDirectory")) "MySesiMetneDonusturme_Build"
 $desktopSetup = Join-Path ([Environment]::GetFolderPath("DesktopDirectory")) "MySesiMetneDonusturme_Setup_v1.0.0.exe"
 $framework = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319"
@@ -18,6 +19,7 @@ if (!(Test-Path $csc)) {
 }
 
 New-Item -ItemType Directory -Force -Path $out | Out-Null
+New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 $refs = @(
     (Join-Path $framework "Microsoft.CSharp.dll"),
@@ -61,6 +63,42 @@ if (Test-Path $toolSource) {
 Copy-Item -Path (Join-Path $root "README.md") -Destination $out -Force -ErrorAction SilentlyContinue
 Copy-Item -Path (Join-Path $root "LICENSE") -Destination $out -Force -ErrorAction SilentlyContinue
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$payloadZip = Join-Path $dist "payload.zip"
+$setupExe = Join-Path $dist "MySesiMetneDonusturme_Setup_v1.0.0.exe"
+if (Test-Path $payloadZip) { Remove-Item -LiteralPath $payloadZip -Force }
+if (Test-Path $setupExe) { Remove-Item -LiteralPath $setupExe -Force }
+[System.IO.Compression.ZipFile]::CreateFromDirectory($out, $payloadZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+$setupRefs = @(
+    (Join-Path $framework "System.dll"),
+    (Join-Path $framework "System.Core.dll"),
+    (Join-Path $framework "System.Drawing.dll"),
+    (Join-Path $framework "System.IO.Compression.dll"),
+    (Join-Path $framework "System.IO.Compression.FileSystem.dll"),
+    (Join-Path $framework "System.Windows.Forms.dll")
+) | ForEach-Object { "/reference:$_" }
+
+$setupSource = Join-Path $root "installer\SetupProgram.cs"
+$setupManifest = Join-Path $root "installer\setup.manifest"
+$setupArgs = @(
+    "/nologo",
+    "/target:winexe",
+    "/platform:anycpu",
+    "/optimize+",
+    "/codepage:65001",
+    "/utf8output",
+    "/out:$setupExe",
+    "/win32manifest:$setupManifest",
+    "/resource:$payloadZip,Payload.zip"
+) + $setupRefs + @($setupSource)
+
+& $csc @setupArgs
+if ($LASTEXITCODE -ne 0) {
+    throw "Setup derlemesi basarisiz oldu. C# derleyici cikis kodu: $LASTEXITCODE"
+}
+Remove-Item -LiteralPath $payloadZip -Force
+
 if ($Installer) {
     $isccCandidates = @(
         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
@@ -86,8 +124,9 @@ if (Test-Path $setup) {
 
 Write-Host "Build tamamlandi: $out"
 Write-Host "Masaustu build klasoru: $desktopBuild"
-if (Test-Path $setup) {
-    Write-Host "Setup dosyasi: $desktopSetup"
+Write-Host "Setup dosyasi: $desktopSetup"
+if ($Installer) {
+    Write-Host "Inno Setup scripti de calistirildi."
 } else {
-    Write-Host "Setup uretilmedi. Inno Setup kuruluysa .\build.ps1 -Installer calistirin."
+    Write-Host "Inno Setup opsiyonel. Ayrica Inno paketi icin .\build.ps1 -Installer kullanilabilir."
 }

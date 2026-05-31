@@ -9,6 +9,7 @@ Tarih: 2026-05-31
 - `dotnet`, MSBuild ve Inno Setup bu makinede PATH üzerinde bulunamadı.
 - `.\build.ps1` başarıyla çalıştı.
 - Üretilen ana çıktı: `build\bin\MySesiMetneDonusturme.exe`
+- Üretilen setup: `dist\MySesiMetneDonusturme_Setup_v1.0.0.exe`
 - Masaüstü build klasörü oluşturuldu: `MySesiMetneDonusturme_Build`
 - Uygulama gizli pencereyle kısa süre başlatıldı; startup crash görülmedi.
 
@@ -28,4 +29,4 @@ Tarih: 2026-05-31
 
 ## Not
 
-Gerçek transkripsiyon testleri bu oturumda tamamlanamadı, çünkü workspace içinde FFmpeg, whisper.cpp binary/model dosyaları ve yt-dlp bulunmuyor. Uygulama bu eksikleri Ayarlar ekranında gösterir ve kullanıcıya anlaşılır uyarı verir.
+Gerçek transkripsiyon testleri bu oturumda tamamlanamadı, çünkü workspace içinde FFmpeg, whisper.cpp binary/model dosyaları ve yt-dlp bulunmuyor. Uygulama bu eksikleri Ayarlar ekranında gösterir ve kullanıcıya anlaşılır uyarı verir. Dahili setup paketi oluşturuldu; yönetici izni gerektirdiği için gerçek kurulum çalıştırılmadı.

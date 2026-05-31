@@ -65,7 +65,15 @@ MySesiMetneDonusturme_Build
 
 ## Kurulum Dosyası
 
-Kurulum için `installer\MySesiMetneDonusturme.iss` Inno Setup 6 scripti hazırdır. Bu bilgisayarda Inno Setup kurulu değilse setup üretilemez. Kurduktan sonra:
+`build.ps1`, Inno Setup gerektirmeden .NET Framework tabanlı küçük bir kurulum paketi de üretir:
+
+```text
+dist\MySesiMetneDonusturme_Setup_v1.0.0.exe
+```
+
+Setup dosyası Program Files içine kurulum yapar, masaüstü kısayolu ve Başlat menüsü kısayolu oluşturur. Yönetici izni ister.
+
+Ek olarak `installer\MySesiMetneDonusturme.iss` Inno Setup 6 scripti de hazırdır. Inno Setup kuruluysa alternatif Inno paketi için:
 
 ```powershell
 .\build.ps1 -Installer
@@ -104,7 +112,7 @@ Varsayılan tasarım yereldir. Dosyalar kullanıcı açıkça YouTube linki işl
 - Gerçek transkripsiyon için `whisper-cli.exe`, model dosyaları ve FFmpeg gereklidir.
 - YouTube iş akışı için `yt-dlp.exe` ve internet bağlantısı gerekir.
 - PDF dışa aktarma gömülü PDF kütüphanesi kullanmadan üretilir; Türkçe karakterler PDF içinde okunabilir ASCII karşılıklarına sadeleştirilir. DOCX ve TXT çıktıları Türkçe karakterleri korur.
-- Inno Setup bu bilgisayarda kurulu değilse setup `.exe` build sırasında üretilemez.
+- Inno Setup bu bilgisayarda kurulu değil; bu nedenle Inno tabanlı alternatif paket test edilmedi. Dahili .NET setup paketi üretilir.
 - Çok uzun dosyalarda işlem süresi tamamen bilgisayarın CPU/RAM/disk performansına bağlıdır.
 
 ## GitHub
