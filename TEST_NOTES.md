@@ -15,7 +15,11 @@ Tarih: 2026-05-31
 - Eksik araçlar için otomatik indirme akışı eklendi: yt-dlp, FFmpeg, whisper.cpp ve `ggml-base.bin`.
 - Yüksek doğruluk varsayılan model yapıldı; seçili model dosyası yoksa işlem başlamadan indirme akışına yönlendirilir.
 - Whisper çağrısına beam-search/best-of, Türkçe prompt, işlemci thread ayarı ve yüksek doğrulukta bağlam/sözcük bölme parametreleri eklendi.
+- No-speech eşiği atlamayı azaltacak şekilde yükseltildi, `--carry-initial-prompt` eklendi.
+- Yaygın Türkçe yazım hataları için temel otomatik düzeltme katmanı eklendi.
+- `scripts\prepare-tools.ps1` ile FFmpeg, yt-dlp, whisper.cpp ve `ggml-small.bin` indirildi; yeni setup bu araçları içerir.
 - DataGrid başlık/hücre stilleri koyu temada okunur olacak şekilde zorlandı.
+- ComboBox açılır liste ve seçili öğe renkleri koyu temada okunur olacak şekilde zorlandı.
 - Ana sayfa animasyonu statik başlık + ince parlayan çizgiye çevrildi; eski bar tipi AI ses dalgası kaldırılıp çizgisel waveform animasyonu eklendi.
 - Ana sayfa AI/müzik görselli slider, animasyonlu ses dalgaları ve direkt erişim butonlarıyla yenilendi.
 - Dosya yükleme üst alanı taşmayı önlemek için sarmal buton/seçenek düzenine çevrildi.

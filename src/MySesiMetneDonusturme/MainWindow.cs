@@ -228,7 +228,7 @@ namespace MySesiMetneDonusturme
 
             WrapPanel options = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
             _languageCombo = Combo(new string[] { "Türkçe", "Otomatik Algıla", "İngilizce", "Almanca", "Arapça" }, _settings.DefaultLanguage);
-            _modelCombo = Combo(new string[] { "Hızlı", "Dengeli", "Yüksek Doğruluk" }, _settings.DefaultModel);
+            _modelCombo = Combo(new string[] { "Hızlı", "Dengeli", "Yüksek Doğruluk", "Çok Yüksek" }, _settings.DefaultModel);
             options.Children.Add(Labeled("Dil", _languageCombo, 150));
             options.Children.Add(Labeled("Model", _modelCombo, 160));
             _timestampsCheck = Check("Zaman damgası", _settings.TimestampsEnabled);
@@ -419,7 +419,7 @@ namespace MySesiMetneDonusturme
             stack.Children.Add(LabeledBlock("Çıktı klasörü", folderRow));
 
             ComboBox settingsLanguage = Combo(new string[] { "Türkçe", "Otomatik Algıla", "İngilizce", "Almanca", "Arapça" }, _settings.DefaultLanguage);
-            ComboBox settingsModel = Combo(new string[] { "Hızlı", "Dengeli", "Yüksek Doğruluk" }, _settings.DefaultModel);
+            ComboBox settingsModel = Combo(new string[] { "Hızlı", "Dengeli", "Yüksek Doğruluk", "Çok Yüksek" }, _settings.DefaultModel);
             stack.Children.Add(LabeledBlock("Varsayılan dil", settingsLanguage));
             stack.Children.Add(LabeledBlock("Varsayılan model", settingsModel));
 
@@ -787,14 +787,14 @@ namespace MySesiMetneDonusturme
             try
             {
                 IProgress<string> progress = new Progress<string>(delegate(string message) { UpdateStatus(message); });
-                await _toolInstallerService.EnsureAllAsync(progress, CancellationToken.None);
+                await _toolInstallerService.EnsureAllAsync(CurrentOptions().Model, progress, CancellationToken.None);
                 UpdateStatus("Araçlar hazır");
                 return true;
             }
             catch (Exception ex)
             {
                 Logger.Error("Arac kurulumu basarisiz", ex);
-                MessageBox.Show("Gerekli araçlar indirilemedi. İnternet bağlantısını kontrol edip tekrar deneyin.", "Araçları hazırla", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(BuildDownloadErrorMessage(ex), "Araçları hazırla", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
         }
@@ -816,7 +816,7 @@ namespace MySesiMetneDonusturme
             catch (Exception ex)
             {
                 Logger.Error("YouTube arac kurulumu basarisiz", ex);
-                MessageBox.Show("YouTube araçları indirilemedi. İnternet bağlantısını kontrol edip tekrar deneyin.", "YouTube araçları", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(BuildDownloadErrorMessage(ex), "YouTube araçları", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
         }
@@ -839,9 +839,17 @@ namespace MySesiMetneDonusturme
             catch (Exception ex)
             {
                 Logger.Error("Transkripsiyon arac kurulumu basarisiz", ex);
-                MessageBox.Show("Transkripsiyon araçları indirilemedi. İnternet bağlantısını kontrol edip tekrar deneyin.", "Transkripsiyon araçları", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(BuildDownloadErrorMessage(ex), "Transkripsiyon araçları", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
+        }
+
+        private string BuildDownloadErrorMessage(Exception ex)
+        {
+            UserVisibleException visible = ex as UserVisibleException;
+            if (visible != null) return visible.Message;
+            if (ex.InnerException is UserVisibleException) return ex.InnerException.Message;
+            return "Gerekli araç indirilemedi.\n\nHata: " + ex.Message + "\n\nİnternetiniz bağlı olsa bile GitHub/HuggingFace indirmesi güvenlik duvarı, antivirüs veya proxy tarafından engellenmiş olabilir.";
         }
 
         private void LoadSelectedTranscript()
@@ -1501,11 +1509,18 @@ namespace MySesiMetneDonusturme
             cellStyle.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
             cellStyle.Setters.Add(new Setter(Control.BorderBrushProperty, _borderBrush));
             cellStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 4, 6, 4)));
+            Trigger selectedCell = new Trigger { Property = DataGridCell.IsSelectedProperty, Value = true };
+            selectedCell.Setters.Add(new Setter(Control.BackgroundProperty, _accentBrush));
+            selectedCell.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+            cellStyle.Triggers.Add(selectedCell);
             grid.CellStyle = cellStyle;
 
             Style rowStyle = new Style(typeof(DataGridRow));
             rowStyle.Setters.Add(new Setter(Control.ForegroundProperty, _textBrush));
             rowStyle.Setters.Add(new Setter(Control.BorderBrushProperty, _borderBrush));
+            Trigger selectedRow = new Trigger { Property = DataGridRow.IsSelectedProperty, Value = true };
+            selectedRow.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+            rowStyle.Triggers.Add(selectedRow);
             grid.RowStyle = rowStyle;
         }
 
@@ -1545,9 +1560,30 @@ namespace MySesiMetneDonusturme
             combo.Background = _inputBackground;
             combo.Foreground = _textBrush;
             combo.BorderBrush = _borderBrush;
+            combo.Padding = new Thickness(6, 3, 6, 3);
+            combo.ItemContainerStyle = ComboItemStyle();
             foreach (string item in items) combo.Items.Add(item);
             combo.SelectedItem = items.Contains(selected) ? selected : items[0];
             return combo;
+        }
+
+        private Style ComboItemStyle()
+        {
+            Style style = new Style(typeof(ComboBoxItem));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, _inputBackground));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, _textBrush));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 6, 8, 6)));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, _borderBrush));
+            style.Setters.Add(new Setter(Control.FontSizeProperty, 13.0));
+            Trigger highlighted = new Trigger { Property = ComboBoxItem.IsHighlightedProperty, Value = true };
+            highlighted.Setters.Add(new Setter(Control.BackgroundProperty, _accentBrush));
+            highlighted.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+            style.Triggers.Add(highlighted);
+            Trigger selected = new Trigger { Property = ComboBoxItem.IsSelectedProperty, Value = true };
+            selected.Setters.Add(new Setter(Control.BackgroundProperty, _accentBrush));
+            selected.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+            style.Triggers.Add(selected);
+            return style;
         }
 
         private CheckBox Check(string text, bool isChecked)

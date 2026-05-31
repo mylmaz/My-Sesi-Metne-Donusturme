@@ -392,6 +392,7 @@ namespace MySesiMetneDonusturme
         {
             if (String.Equals(modelChoice, "Hızlı", StringComparison.OrdinalIgnoreCase)) return "ggml-tiny.bin";
             if (String.Equals(modelChoice, "Dengeli", StringComparison.OrdinalIgnoreCase)) return "ggml-base.bin";
+            if (String.Equals(modelChoice, "Çok Yüksek", StringComparison.OrdinalIgnoreCase)) return "ggml-medium.bin";
             return "ggml-small.bin";
         }
 
@@ -483,6 +484,7 @@ namespace MySesiMetneDonusturme
         private const string TinyModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
         private const string BaseModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
         private const string SmallModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
+        private const string MediumModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin";
 
         private readonly DependencyService _dependencies;
 
@@ -509,7 +511,7 @@ namespace MySesiMetneDonusturme
                    !String.IsNullOrEmpty(_dependencies.FindFfmpeg());
         }
 
-        public async Task EnsureAllAsync(IProgress<string> progress, CancellationToken token)
+        public async Task EnsureAllAsync(string modelChoice, IProgress<string> progress, CancellationToken token)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             await Task.Factory.StartNew(delegate
@@ -521,7 +523,7 @@ namespace MySesiMetneDonusturme
                 EnsureYtDlp(tools, progress, token);
                 EnsureFfmpeg(tools, download, progress, token);
                 EnsureWhisper(tools, download, progress, token);
-                EnsureModel(tools, "Yüksek Doğruluk", progress, token);
+                EnsureModel(tools, modelChoice, progress, token);
 
                 Report(progress, "Araçlar hazır.");
             }, token);
@@ -593,6 +595,7 @@ namespace MySesiMetneDonusturme
         {
             if (String.Equals(fileName, "ggml-tiny.bin", StringComparison.OrdinalIgnoreCase)) return TinyModelUrl;
             if (String.Equals(fileName, "ggml-base.bin", StringComparison.OrdinalIgnoreCase)) return BaseModelUrl;
+            if (String.Equals(fileName, "ggml-medium.bin", StringComparison.OrdinalIgnoreCase)) return MediumModelUrl;
             return SmallModelUrl;
         }
 
@@ -604,14 +607,81 @@ namespace MySesiMetneDonusturme
 
             string temp = destination + ".download";
             if (File.Exists(temp)) File.Delete(temp);
-            using (WebClient client = new WebClient())
+            try
             {
-                client.Headers.Add("User-Agent", "MySesiMetneDonusturme/1.0.0");
-                client.DownloadFile(url, temp);
+                DownloadWithHttpRequest(url, temp, token);
+                token.ThrowIfCancellationRequested();
+                FileInfo info = new FileInfo(temp);
+                if (!info.Exists || info.Length == 0)
+                {
+                    throw new IOException("İndirilen dosya boş geldi.");
+                }
+                if (File.Exists(destination)) File.Delete(destination);
+                File.Move(temp, destination);
             }
-            token.ThrowIfCancellationRequested();
-            if (File.Exists(destination)) File.Delete(destination);
-            File.Move(temp, destination);
+            catch (Exception ex)
+            {
+                try
+                {
+                    if (File.Exists(temp)) File.Delete(temp);
+                }
+                catch
+                {
+                }
+                Logger.Error("Arac indirilemedi: " + url, ex);
+                throw new UserVisibleException("Gerekli araç indirilemedi.\n\nDosya: " + Path.GetFileName(destination) + "\nKaynak: " + url + "\nHata: " + ex.Message, ex);
+            }
+        }
+
+        private static void DownloadWithHttpRequest(string url, string destination, CancellationToken token)
+        {
+            string current = url;
+            for (int redirect = 0; redirect < 8; redirect++)
+            {
+                token.ThrowIfCancellationRequested();
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(current);
+                request.AllowAutoRedirect = false;
+                request.UserAgent = "MySesiMetneDonusturme/1.0.0";
+                request.Timeout = 30000;
+                request.ReadWriteTimeout = 120000;
+                request.KeepAlive = false;
+                request.Proxy = WebRequest.GetSystemWebProxy();
+                if (request.Proxy != null) request.Proxy.Credentials = CredentialCache.DefaultCredentials;
+
+                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                {
+                    int status = (int)response.StatusCode;
+                    if (status >= 300 && status < 400)
+                    {
+                        string location = response.Headers["Location"];
+                        if (String.IsNullOrWhiteSpace(location))
+                        {
+                            throw new WebException("Yönlendirme adresi alınamadı.");
+                        }
+                        Uri next = new Uri(new Uri(current), location);
+                        current = next.ToString();
+                        continue;
+                    }
+                    if (response.StatusCode != HttpStatusCode.OK)
+                    {
+                        throw new WebException("Sunucu yanıtı: " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + " " + response.StatusDescription);
+                    }
+
+                    using (Stream input = response.GetResponseStream())
+                    using (FileStream output = File.Create(destination))
+                    {
+                        byte[] buffer = new byte[1024 * 128];
+                        int read;
+                        while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            output.Write(buffer, 0, read);
+                        }
+                    }
+                    return;
+                }
+            }
+            throw new WebException("Çok fazla yönlendirme alındı.");
         }
 
         private static void ExtractWhisper(string zipPath, string destination)
@@ -854,10 +924,12 @@ namespace MySesiMetneDonusturme
             args.Append(" -of ").Append(ProcessRunner.Quote(outBase));
             args.Append(" -otxt -osrt -ovtt");
             args.Append(" -t ").Append(Math.Max(1, Environment.ProcessorCount - 1).ToString(CultureInfo.InvariantCulture));
-            args.Append(" -bs 5 -bo 5");
-            args.Append(" --prompt ").Append(ProcessRunner.Quote("Türkçe konuşma metni. Özel adları, ekleri, sayıları ve noktalama işaretlerini dikkatli yaz. Eksik kelime bırakma."));
+            args.Append(" -bs 5 -bo 5 -tp 0.0 -nth 0.99 -et 3.00 -lpt -2.00");
+            args.Append(" --prompt ").Append(ProcessRunner.Quote("Türkçe konuşma metni. Konuşulan her kelimeyi atlamadan yaz. Özel adları, ekleri, sayıları, Türkçe karakterleri ve noktalama işaretlerini dikkatli düzelt. Eksik kelime bırakma."));
+            args.Append(" --carry-initial-prompt");
 
-            if (String.Equals(options.Model, "Yüksek Doğruluk", StringComparison.OrdinalIgnoreCase))
+            if (String.Equals(options.Model, "Yüksek Doğruluk", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(options.Model, "Çok Yüksek", StringComparison.OrdinalIgnoreCase))
             {
                 args.Append(" -mc 256 -sow");
             }
@@ -965,6 +1037,7 @@ namespace MySesiMetneDonusturme
                 result = Regex.Replace(result, @"\b(ııı+|eee+|şey|hani|yani)\b", "", RegexOptions.IgnoreCase);
                 result = Regex.Replace(result, @"[ ]{2,}", " ");
             }
+            result = ApplyCommonTurkishSpellingFixes(result);
             if (options.ImprovePunctuation)
             {
                 result = ImprovePunctuation(result);
@@ -975,6 +1048,38 @@ namespace MySesiMetneDonusturme
                 result = Regex.Replace(result, @"(?<=[.!?])\s+(?=\[?\d{0,2}:?\d{2}|[A-ZÇĞİÖŞÜ])", Environment.NewLine + Environment.NewLine);
             }
             return result.Trim();
+        }
+
+        private static string ApplyCommonTurkishSpellingFixes(string text)
+        {
+            if (String.IsNullOrWhiteSpace(text)) return "";
+            string result = text;
+            Dictionary<string, string> replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            replacements["birşey"] = "bir şey";
+            replacements["herşey"] = "her şey";
+            replacements["hiçbirşey"] = "hiçbir şey";
+            replacements["pekçok"] = "pek çok";
+            replacements["birçok"] = "birçok";
+            replacements["herkez"] = "herkes";
+            replacements["yalnış"] = "yanlış";
+            replacements["yanlız"] = "yalnız";
+            replacements["orjinal"] = "orijinal";
+            replacements["şarz"] = "şarj";
+            replacements["traş"] = "tıraş";
+            replacements["klavuz"] = "kılavuz";
+            replacements["laboratuar"] = "laboratuvar";
+            replacements["matamatik"] = "matematik";
+            replacements["entellektüel"] = "entelektüel";
+            replacements["müsade"] = "müsaade";
+            replacements["süpriz"] = "sürpriz";
+            replacements["yanlızca"] = "yalnızca";
+            replacements["aferim"] = "aferin";
+
+            foreach (KeyValuePair<string, string> item in replacements)
+            {
+                result = Regex.Replace(result, @"\b" + Regex.Escape(item.Key) + @"\b", item.Value, RegexOptions.IgnoreCase);
+            }
+            return result;
         }
 
         private static string NormalizeTranscriptText(string text)

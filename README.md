@@ -13,6 +13,7 @@ Uygulama; ses/video dosyalarını ve kullanıcının indirme hakkı olan YouTube
 - Model seçimi: Hızlı, Dengeli, Yüksek Doğruluk
 - Zaman damgası, paragraf düzenleme, dolgu kelimesi temizleme, noktalama iyileştirme
 - Yüksek doğruluk varsayılan model ayarı, beam-search odaklı Whisper parametreleri
+- Konuşmayı atlamayı azaltan no-speech eşiği ve uzun dosyalarda prompt taşıma ayarı
 - İptal edilebilir arka plan işlemleri
 - Düzenlenebilir metin editörü, arama, değiştirme, tümünü kopyalama
 - PDF, Word `.docx`, TXT, SRT ve VTT dışa aktarma
@@ -26,7 +27,9 @@ Uygulama; ses/video dosyalarını ve kullanıcının indirme hakkı olan YouTube
 
 ## Yerel Araçlar
 
-Transkripsiyon için FFmpeg, whisper.cpp, Whisper model dosyası ve yt-dlp gerekir. Uygulama artık eksik araçları işlem başlatırken tek tıkla resmi kaynaklardan indirebilir ve `%LOCALAPPDATA%\MySesiMetneDonusturme\Tools` altında saklar.
+Transkripsiyon için FFmpeg, whisper.cpp, Whisper model dosyası ve yt-dlp gerekir. Uygulama eksik araçları işlem başlatırken tek tıkla resmi kaynaklardan indirebilir ve `%LOCALAPPDATA%\MySesiMetneDonusturme\Tools` altında saklar.
+
+Bu build için yüksek doğruluk araçları ayrıca proje `Tools` klasörüne hazırlanmıştır. Build scripti bunları setup paketine kopyalar.
 
 İsterseniz araçları uygulama yanına da koyabilirsiniz:
 
@@ -61,6 +64,12 @@ Bu makinede `dotnet` ve MSBuild bulunmadığı için proje, Windows içindeki .N
 
 ```powershell
 .\build.ps1
+```
+
+Araçları yeniden hazırlamak gerekirse:
+
+```powershell
+.\scripts\prepare-tools.ps1
 ```
 
 Çıktı:
@@ -122,7 +131,7 @@ Varsayılan tasarım yereldir. Dosyalar kullanıcı açıkça YouTube linki işl
 
 ## Bilinen Sınırlamalar
 
-- İlk yüksek doğruluk transkripsiyonu öncesinde `ggml-small.bin` model indirme süresi internet hızına göre uzayabilir.
+- Bu teslimde `ggml-small.bin`, FFmpeg, whisper.cpp ve yt-dlp setup paketine dahil edildi. Yeniden hazırlama gerekirse `scripts\prepare-tools.ps1` çalıştırılabilir.
 - Harf/yazım doğruluğu ses kalitesine, arka plan gürültüsüne, konuşmacı netliğine ve model boyutuna bağlıdır; uygulama varsayılan olarak daha doğru model ve daha dikkatli Whisper ayarları kullanır.
 - YouTube iş akışı için internet bağlantısı gerekir.
 - PDF dışa aktarma gömülü PDF kütüphanesi kullanmadan üretilir; Türkçe karakterler PDF içinde okunabilir ASCII karşılıklarına sadeleştirilir. DOCX ve TXT çıktıları Türkçe karakterleri korur.
