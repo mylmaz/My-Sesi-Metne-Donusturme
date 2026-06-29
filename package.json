@@ -103,7 +103,7 @@
       "differentialPackage": false,
       "packElevateHelper": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": true,
       "shortcutName": "My Sesi Metne Donusturme",
