@@ -1,7 +1,7 @@
 {
   "name": "my-sesi-metne-donusturme",
   "version": "1.0.0",
-  "description": "My Sesi Metne Dönüştürme - yerel ses/video/YouTube transkript uygulaması",
+  "description": "My Sesi Metne Donusturme - yerel ses/video/YouTube transkript uygulaması",
   "author": "Mustafa Yılmaz",
   "copyright": "© 2026 Mustafa Yılmaz. Tüm hakları saklıdır.",
   "license": "MIT",
@@ -37,7 +37,7 @@
   },
   "build": {
     "appId": "com.mustafayilmaz.mysesimetnedonusturme",
-    "productName": "My Sesi Metne Dönüştürme",
+    "productName": "My Sesi Metne Donusturme",
     "artifactName": "My-Sesi-Metne-Donusturme-Setup-x64.${ext}",
     "directories": {
       "output": "dist-electron-package"
@@ -92,11 +92,13 @@
         }
       ],
       "icon": "resources/app-icon.ico",
+      "executableName": "MySesiMetneDonusturme",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
+      "include": "installer/electron-cleanup.nsh",
       "useZip": true,
       "differentialPackage": false,
       "packElevateHelper": false,
@@ -104,8 +106,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": true,
-      "shortcutName": "My Sesi Metne Dönüştürme",
-      "uninstallDisplayName": "My Sesi Metne Dönüştürme"
+      "shortcutName": "My Sesi Metne Donusturme",
+      "uninstallDisplayName": "My Sesi Metne Donusturme"
     }
   }
 }
