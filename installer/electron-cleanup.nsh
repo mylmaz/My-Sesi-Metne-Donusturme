@@ -10,8 +10,8 @@
   ; Teknik bilgisi olmayan kullanıcı için kısayolları seçim ekranına bırakma.
   ; Exe adı ASCII olduğu için Türkçe karakter kaynaklı "Eksik Kısayol" hatası oluşmaz.
   CreateDirectory "$SMPROGRAMS\My Sesi Metne Donusturme"
-  CreateShortCut "$DESKTOP\My Sesi Metne Donusturme.lnk" "$INSTDIR\MySesiMetneDonusturme.exe" "" "$INSTDIR\MySesiMetneDonusturme.exe" 0
-  CreateShortCut "$SMPROGRAMS\My Sesi Metne Donusturme\My Sesi Metne Donusturme.lnk" "$INSTDIR\MySesiMetneDonusturme.exe" "" "$INSTDIR\MySesiMetneDonusturme.exe" 0
+  CreateShortCut "$DESKTOP\My Sesi Metne Donusturme.lnk" "$INSTDIR\MySesiMetneDonusturme.exe" "" "$INSTDIR\resources\resources\app-icon.ico" 0
+  CreateShortCut "$SMPROGRAMS\My Sesi Metne Donusturme\My Sesi Metne Donusturme.lnk" "$INSTDIR\MySesiMetneDonusturme.exe" "" "$INSTDIR\resources\resources\app-icon.ico" 0
 !macroend
 
 !macro customUnInstall

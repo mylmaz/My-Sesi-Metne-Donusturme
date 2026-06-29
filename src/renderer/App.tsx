@@ -480,7 +480,7 @@ function QueuePage(props: {
         {props.jobs.length === 0 && <div className="empty-state">Henüz dosya eklenmedi. Başlamak için Dosya Seç düğmesine basın.</div>}
         {props.jobs.map((job) => (
           <div className={`job-row ${props.selectedId === job.id ? "selected" : ""}`} key={job.id} onClick={() => props.setSelectedId(job.id)}>
-          <div className="file-cell"><img src={job.format === "MP4" || job.format === "MOV" || job.format === "AVI" || job.format === "MKV" ? assets.file : assets.audio} alt="" /><div><b>{job.name}</b><p>{job.format} • {job.duration} • {job.sizeText}</p></div></div>
+            <div className="file-cell"><img src={job.format === "MP4" || job.format === "MOV" || job.format === "AVI" || job.format === "MKV" ? assets.file : assets.audio} alt="" /><div><b title={job.name}>{job.name}</b><p>{job.format} • {job.duration} • {job.sizeText}</p></div></div>
             <StatusPill status={job.status} />
             <div className="small-lines"><span>{job.quality}</span><span>{job.language}</span></div>
             <div><b>{job.progress}%</b><div className="progress"><i style={{ width: `${job.progress}%` }} /></div></div>
@@ -585,15 +585,28 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
   const src = job?.sourceType === "file" && job.sourcePath ? toFileUrl(job.sourcePath) : "";
   const total = duration || job?.durationSeconds || 0;
   const percent = total > 0 ? Math.min(100, (current / total) * 100) : 0;
+
+  useEffect(() => {
+    setPlaying(false);
+    setCurrent(0);
+    setDuration(0);
+    if (audio.current) {
+      audio.current.pause();
+      audio.current.currentTime = 0;
+    }
+  }, [job?.id, job?.sourcePath]);
+
   return (
-    <div className={`audio-player glass-card ${compact ? "compact" : ""}`}>
+    <div className={`audio-player glass-card ${compact ? "compact" : ""} ${src ? "" : "disabled"}`}>
       <audio
         ref={audio}
         src={src}
+        preload="metadata"
         onLoadedMetadata={() => {
           setDuration(audio.current?.duration || job?.durationSeconds || 0);
           if (audio.current) audio.current.volume = volume;
         }}
+        onDurationChange={() => setDuration(audio.current?.duration || job?.durationSeconds || 0)}
         onTimeUpdate={() => setCurrent(audio.current?.currentTime || 0)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
@@ -606,12 +619,18 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
           setCurrent(0);
         }}
       />
-      <button className="round-play" onClick={() => {
+      <div className="audio-controls">
+      <button className="round-play" disabled={!src} onClick={() => {
         if (!audio.current || !src) return;
-        if (audio.current.paused) void audio.current.play(); else audio.current.pause();
+        if (audio.current.paused) {
+          void audio.current.play().catch(() => setPlaying(false));
+        } else {
+          audio.current.pause();
+        }
       }}>{playing ? <SvgIcon name="pause" /> : <SvgIcon name="play" />}</button>
-      <button className="mini-control" onClick={() => { if (audio.current) audio.current.currentTime = Math.max(0, audio.current.currentTime - 10); }}><SvgIcon name="back10" /></button>
-      <button className="mini-control" onClick={() => { if (audio.current) audio.current.currentTime = Math.min(total || audio.current.duration || 0, audio.current.currentTime + 10); }}><SvgIcon name="forward10" /></button>
+      <button className="mini-control" disabled={!src} onClick={() => { if (audio.current) audio.current.currentTime = Math.max(0, audio.current.currentTime - 10); }}><SvgIcon name="back10" /></button>
+      <button className="mini-control" disabled={!src} onClick={() => { if (audio.current) audio.current.currentTime = Math.min(total || audio.current.duration || 0, audio.current.currentTime + 10); }}><SvgIcon name="forward10" /></button>
+      </div>
       <div className="wave">
         <input
           className="seek-range"
@@ -622,6 +641,7 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
           max={Math.max(total, 1)}
           step="0.1"
           value={Math.min(current, Math.max(total, 1))}
+          disabled={!src}
           onChange={(event) => {
             const next = Number(event.target.value);
             setCurrent(next);
@@ -629,7 +649,7 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
           }}
         />
       </div>
-      <span>{formatClock(current)} / {total > 0 ? formatClock(total) : job?.duration || "--:--"}</span>
+      <span className="audio-time">{src ? `${formatClock(current)} / ${total > 0 ? formatClock(total) : job?.duration || "--:--"}` : "Ses önizleme yalnızca yerel dosyada"}</span>
       <SvgIcon name="sound" className="sound-icon" />
       <input className="volume-range" aria-label="Ses seviyesi" type="range" min="0" max="1" step="0.01" value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); if (audio.current) audio.current.volume = next; }} />
     </div>

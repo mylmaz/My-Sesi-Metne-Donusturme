@@ -523,6 +523,10 @@ ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppS
       "-loglevel",
       "error",
       "-nostdin",
+      "-probesize",
+      "50M",
+      "-analyzeduration",
+      "100M",
       "-i",
       input,
       "-vn",
@@ -534,11 +538,19 @@ ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppS
       "16000",
       "-ac",
       "1",
+      "-c:a",
+      "pcm_s16le",
+      "-sample_fmt",
+      "s16",
       "-af",
-      "loudnorm=I=-18:LRA=11:TP=-1.5",
+      "aresample=async=1:first_pts=0,loudnorm=I=-18:LRA=11:TP=-1.5",
+      "-f",
+      "wav",
       wav
     ], { jobId: job.id });
     requireFile(wav, "Hazırlanan ses dosyası", 44);
+    const preparedSeconds = await probeDuration(wav);
+    if (preparedSeconds <= 0) throw new UserVisibleError("Ses hazırlanamadı. Dosyada okunabilir bir ses kanalı bulunamadı.");
 
     emitProgress(job.id, 25, "Metne dönüştürülüyor", startedAt);
     const outBase = path.join(dir, "transcript");
@@ -714,9 +726,10 @@ async function exportPdf(job: JobRecord) {
   const file = outputBase(job, "pdf");
   const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
   const stream = fs.createWriteStream(file);
-  const font = ["C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\segoeui.ttf"].find((candidate) => fs.existsSync(candidate));
+  const font = ["C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\tahoma.ttf"].find((candidate) => fs.existsSync(candidate));
   if (!font) throw new UserVisibleError("PDF için Türkçe karakter destekli Windows yazı tipi bulunamadı.");
-  doc.font(font);
+  doc.registerFont("AppText", font);
+  doc.font("AppText");
   doc.pipe(stream);
   doc.fontSize(20).fillColor("#111827").text("My Sesi Metne Dönüştürme");
   doc.moveDown(0.2).fontSize(15).fillColor("#4f46e5").text("Transkript Raporu");
@@ -731,13 +744,13 @@ async function exportPdf(job: JobRecord) {
   doc.fontSize(11).fillColor("#111827");
   for (const line of (job.transcript || "Metin bulunamadı.").split(/\r?\n/)) {
     const match = line.match(/^\[(.+?)\]\s*(.*)$/);
-    if (match) {
-      const y = doc.y;
-      doc.fillColor("#4f46e5").text(`[${match[1]}]`, 48, y, { width: 72, continued: false });
-      doc.fillColor("#111827").text(match[2] || " ", 128, y, { width: 420, lineGap: 4 });
-    } else {
-      doc.fillColor("#111827").text(line || " ", { width: 500, lineGap: 4 });
-    }
+    const printable = match ? `[${match[1]}] ${match[2] || ""}` : line;
+    doc.fillColor(match ? "#1f3fbf" : "#111827").text(printable || " ", {
+      width: 500,
+      lineGap: 4,
+      paragraphGap: 3,
+      features: []
+    });
     if (doc.y > 760) doc.addPage();
   }
   doc.moveDown();
