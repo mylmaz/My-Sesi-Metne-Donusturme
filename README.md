@@ -1,149 +1,122 @@
 # My Sesi Metne Dönüştürme
 
-Windows 7, Windows 8, Windows 10 ve Windows 11 hedefli, .NET Framework 4.8 tabanlı WPF masaüstü uygulaması.
+Windows x64 için yerel ses, video ve YouTube transkripsiyon uygulaması. Yerel dosyalar cihazdan dışarı gönderilmez ve ücretli API kullanılmaz. İnternet yalnızca YouTube içeriğine erişmek için gerekir.
 
-Uygulama; ses/video dosyalarını ve kullanıcının indirme hakkı olan YouTube içeriklerini yerel araçlarla metne dönüştürmek için hazırlanmıştır. Ücretsiz, reklamsız ve sınırsız kullanım yaklaşımıyla tasarlanmıştır; varsayılan çözüm ücretli bulut API'lerine bağlı değildir.
+- Geliştirici: Mustafa Yılmaz
+- Sürüm: 1.0.0
+- Lisans: MIT
 
 ## Özellikler
 
-- Tekli ve toplu dosya kuyruğu
-- Sürükle-bırak dosya ekleme
-- YouTube linki için izin/telif uyarısı, başlık/süre/küçük görsel alanı
-- Dil seçimi: Türkçe, Otomatik Algıla, İngilizce, Almanca, Arapça
-- Model seçimi: Hızlı, Dengeli, Yüksek Doğruluk
-- Zaman damgası, paragraf düzenleme, dolgu kelimesi temizleme, noktalama iyileştirme
-- Yüksek doğruluk varsayılan model ayarı, beam-search odaklı Whisper parametreleri
-- Konuşmayı atlamayı azaltan no-speech eşiği ve uzun dosyalarda prompt taşıma ayarı
-- İptal edilebilir arka plan işlemleri
-- Düzenlenebilir metin editörü, arama, değiştirme, tümünü kopyalama
-- PDF, Word `.docx`, TXT, SRT ve VTT dışa aktarma
-- Yerel ayarlar, işlem geçmişi ve logs klasörü
-- İlk açılışta gizlilik/kullanım bilgilendirmesi
-- AI/müzik temalı ana sayfa, animasyonlu ses dalgaları ve açık/koyu tema
+- MP3, WAV, M4A, MP4, WEBM, MPEG, MPGA, MOV, AVI, MKV, FLAC, AAC, OGG, OPUS, WMA ve WMV desteği
+- YouTube video bilgisi alma ve sesi indirerek dönüştürme
+- Whisper Large-v2 ile tamamen yerel transkripsiyon
+- Otomatik, Türkçe, Kürtçe ve İngilizce dil seçenekleri
+- Hızlı (Beam 4), Dengeli (Beam 6) ve Yüksek Doğruluk (Beam 8) modları
+- Gerçek işlem iptali ve Windows child-process ağacı sonlandırma
+- UTF-8 TXT, Türkçe karakter uyumlu PDF ve DOCX çıktısı
+- Açık renkli, cam efektli Electron + React arayüz
 
-## Desteklenen Formatlar
-
-`mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `wav`, `webm`, `mov`, `aac`, `ogg`, `opus`, `wma`, `wmv`, `avi`, `flac`, `mkv`
-
-## Yerel Araçlar
-
-Transkripsiyon için FFmpeg, whisper.cpp, Whisper model dosyası ve yt-dlp gerekir. Uygulama eksik araçları işlem başlatırken tek tıkla resmi kaynaklardan indirebilir ve `%LOCALAPPDATA%\MySesiMetneDonusturme\Tools` altında saklar.
-
-Bu build için yüksek doğruluk araçları ayrıca proje `Tools` klasörüne hazırlanmıştır. Build scripti bunları setup paketine kopyalar.
-
-İsterseniz araçları uygulama yanına da koyabilirsiniz:
+## Aktif proje yapısı
 
 ```text
-Tools/
-  ffmpeg/
-    ffmpeg.exe
-    ffprobe.exe
-  whisper/
-    whisper-cli.exe
-  models/
-    ggml-base.bin
-    ggml-tiny.bin    # Hızlı
-    ggml-base.bin    # Dengeli
-    ggml-small.bin   # Yüksek Doğruluk
-  yt-dlp/
-    yt-dlp.exe
+src/main       Electron ana süreç, FFmpeg/Whisper/yt-dlp ve export işlemleri
+src/preload    İzole renderer için güvenli IPC köprüsü
+src/renderer   React + TypeScript kullanıcı arayüzü
+resources      Electron ve NSIS uygulama ikonu
+Tools          Harici çalışma zamanı araçları ve yerel model
+scripts        Electron doğrulama ve eski sürüme ait yardımcı testler
 ```
 
-İndirme kaynakları:
+`src/MySesiMetneDonusturme` ve kökteki eski installer dosyaları önceki WPF sürümüne aittir. Aktif uygulama Electron sürümüdür; geçmiş sürüm doğrulaması yapılmadan bu dosyalar silinmemelidir.
 
-- yt-dlp: `https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe`
-- whisper.cpp: `https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip`
-- FFmpeg: `https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip`
-- Whisper hızlı model: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin`
-- Whisper dengeli model: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin`
-- Whisper yüksek doğruluk modeli: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin`
+## Gereksinimler
 
-## Build
+- Windows 10/11 x64
+- Node.js 20 veya daha yeni LTS
+- npm
+- Paketleme için yeterli boş disk alanı (en az 5 GB önerilir)
 
-Bu makinede `dotnet` ve MSBuild bulunmadığı için proje, Windows içindeki .NET Framework C# derleyicisiyle derlenir.
+## Çalışma zamanı dosyaları
 
-```powershell
-.\build.ps1
+Aşağıdaki dosyalar geliştirme ortamında bulunmalıdır:
+
+```text
+Tools/ffmpeg/ffmpeg.exe
+Tools/ffmpeg/ffprobe.exe
+Tools/yt-dlp/yt-dlp.exe
+Tools/whisper/whisper-cli.exe
+Tools/whisper/whisper.dll
+Tools/whisper/ggml.dll
+Tools/whisper/ggml-base.dll
+Tools/whisper/ggml-cpu.dll
+Tools/models/ggml-large-v2-q5_k.bin
 ```
 
-Araçları yeniden hazırlamak gerekirse:
+Binary ve model dosyaları boyutları nedeniyle normal Git commit'ine eklenmez. Bunları GitHub Release eki olarak yayımlamak önerilir. Git LFS kullanılacaksa önce `git lfs install` çalıştırılmalıdır.
+
+## Kurulum ve geliştirme
 
 ```powershell
-.\scripts\prepare-tools.ps1
+npm ci
+npm run dev
+```
+
+`npm run dev`, Vite sunucusunu `127.0.0.1:5173` üzerinde açar ve Electron uygulamasını başlatır.
+
+## Kontrol ve build
+
+```powershell
+npm run typecheck
+npm run build
+```
+
+Production build çıktıları `dist` ve `dist-electron` klasörlerinde oluşur.
+
+Mevcut kısa test medyası varsa gerçek Electron transkripsiyon, TXT/PDF/DOCX export ve süreç iptali testi:
+
+```powershell
+$env:ELECTRON_TEST_MEDIA = "C:\medya\kisa-test.wav"
+npm run test:electron
+```
+
+## Windows installer
+
+```powershell
+npm run dist
 ```
 
 Çıktı:
 
 ```text
-build\bin\MySesiMetneDonusturme.exe
+dist-electron-package/My-Sesi-Metne-Donusturme-Setup-x64.exe
 ```
 
-Build scripti ayrıca masaüstünde şu klasörü oluşturur:
+Installer FFmpeg, FFprobe, yt-dlp, gerekli Whisper DLL'leri ve `ggml-large-v2-q5_k.bin` modelini içerir. Paket büyük olduğu için installer normal Git commit'ine eklenmemeli, GitHub Releases üzerinden yayımlanmalıdır.
 
-```text
-MySesiMetneDonusturme_Build
-```
+## Uygulama verileri
 
-## Kurulum Dosyası
+- Ayarlar ve geçmiş: Electron `userData/data` dizini
+- Geçici çalışma dosyaları: `userData/data/work`; işlem bitince veya iptal edilince temizlenir
+- Transkript çıktıları: `%USERPROFILE%\Documents\My Sesi Metne Donusturme Ciktilar`
 
-`build.ps1`, Inno Setup gerektirmeden .NET Framework tabanlı küçük bir kurulum paketi de üretir:
+## GitHub'a güvenli yükleme
 
-```text
-dist\MySesiMetneDonusturme_Setup_v1.0.0.exe
-```
-
-Setup dosyası Program Files içine kurulum yapar, masaüstü kısayolu ve Başlat menüsü kısayolu oluşturur. Yönetici izni ister.
-
-Ek olarak `installer\MySesiMetneDonusturme.iss` Inno Setup 6 scripti de hazırdır. Inno Setup kuruluysa alternatif Inno paketi için:
+Push öncesinde:
 
 ```powershell
-.\build.ps1 -Installer
+git status --short
+git diff --check
+git ls-files | Select-String -Pattern "node_modules|dist-electron-package|Tools/models|\.exe$|\.bin$"
 ```
 
-Beklenen setup adı:
+Beklenmeyen büyük dosya görünmüyorsa:
 
-```text
-MySesiMetneDonusturme_Setup_v1.0.0.exe
+```powershell
+git add .
+git status --short
+git commit -m "fix: improve transcription workflow, ui layout, cancellation and packaging"
+git push origin main
 ```
 
-Script setup dosyasını masaüstüne ve `MySesiMetneDonusturme_Build` klasörüne kopyalar.
-
-## Kullanım
-
-1. Uygulamayı açın.
-2. İlk işlemde araç indirme sorusu gelirse onaylayın.
-3. Dosya Yükle ekranında dosya seçin veya sürükleyip bırakın.
-4. Dil, model ve metin düzenleme seçeneklerini seçin.
-5. Başlat düğmesine basın.
-6. Metni düzenleyin ve PDF, Word, TXT, SRT veya VTT olarak dışa aktarın.
-
-YouTube özelliğinde yalnızca indirme ve yazıya çevirme hakkınız olan içerikleri kullanın.
-
-## Yerel Veri ve Gizlilik
-
-- Ayarlar ve geçmiş: `%LOCALAPPDATA%\MySesiMetneDonusturme`
-- Loglar: `%LOCALAPPDATA%\MySesiMetneDonusturme\logs`
-- Geçici işler: `%LOCALAPPDATA%\MySesiMetneDonusturme\work`
-- Otomatik indirilen araçlar: `%LOCALAPPDATA%\MySesiMetneDonusturme\Tools`
-- Varsayılan çıktı klasörü: Belgeler altında `My Sesi Metne Donusturme Ciktilar`
-
-Varsayılan tasarım yereldir. Dosyalar kullanıcı açıkça YouTube linki işlediğinde internetten veri indirir; ses/video dosyaları ücretli bulut API'lerine gönderilmez.
-
-## Bilinen Sınırlamalar
-
-- Bu teslimde `ggml-small.bin`, FFmpeg, whisper.cpp ve yt-dlp setup paketine dahil edildi. Yeniden hazırlama gerekirse `scripts\prepare-tools.ps1` çalıştırılabilir.
-- Harf/yazım doğruluğu ses kalitesine, arka plan gürültüsüne, konuşmacı netliğine ve model boyutuna bağlıdır; uygulama varsayılan olarak daha doğru model ve daha dikkatli Whisper ayarları kullanır.
-- YouTube iş akışı için internet bağlantısı gerekir.
-- PDF dışa aktarma gömülü PDF kütüphanesi kullanmadan üretilir; Türkçe karakterler PDF içinde okunabilir ASCII karşılıklarına sadeleştirilir. DOCX ve TXT çıktıları Türkçe karakterleri korur.
-- Inno Setup bu bilgisayarda kurulu değil; bu nedenle Inno tabanlı alternatif paket test edilmedi. Dahili .NET setup paketi üretilir.
-- Çok uzun dosyalarda işlem süresi tamamen bilgisayarın CPU/RAM/disk performansına bağlıdır.
-
-## GitHub
-
-Remote yetkisi tanımlı değilse `GITHUB_UPLOAD_COMMANDS.md` dosyasındaki komutları kullanın. Önerilen repo adı:
-
-```text
-My-Sesi-Metne-Donusturme
-```
-
-Hesap: `@vildancam`
+Force push kullanılmamalıdır. Token, `.env`, sertifika ve özel anahtarlar repoya eklenmemelidir.

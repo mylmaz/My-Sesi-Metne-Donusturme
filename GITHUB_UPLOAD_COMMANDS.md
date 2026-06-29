@@ -1,24 +1,26 @@
-# GitHub'a Yüklemek İçin Çalıştırılacak Komutlar
+# GitHub yükleme kontrol listesi
 
-Önerilen repo adı:
+Remote zaten tanımlıdır:
 
 ```text
-My-Sesi-Metne-Donusturme
+origin  https://github.com/vildancam/My-Sesi-Metne-Donusturme.git
 ```
 
-GitHub'da boş repo oluşturduktan sonra:
+Önce büyük veya gizli dosya olmadığını doğrulayın:
 
 ```powershell
-git init
+git status --short
+git diff --check
+git ls-files | Select-String -Pattern "node_modules|dist-electron-package|Tools/models|\.exe$|\.bin$|\.env$|\.pfx$"
+```
+
+Ardından değişiklikleri inceleyerek ekleyin:
+
+```powershell
 git add .
-git commit -m "Initial Windows transcription app"
-git branch -M main
-git remote add origin https://github.com/vildancam/My-Sesi-Metne-Donusturme.git
-git push -u origin main
+git status --short
+git commit -m "fix: improve transcription workflow, ui layout, cancellation and packaging"
+git push origin main
 ```
 
-GitHub CLI kurulu ve giriş yapılmışsa:
-
-```powershell
-gh repo create vildancam/My-Sesi-Metne-Donusturme --private --source . --remote origin --push
-```
+Whisper modeli ve installer normal Git commit'ine eklenmez. Tercihen GitHub Releases kullanın; LFS kullanılacaksa önce `git lfs install` çalıştırın. Force push yapmayın.
