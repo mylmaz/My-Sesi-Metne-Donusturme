@@ -15,6 +15,7 @@ const assets = {
   flagTr: new URL("./assets/flag-tr.png", import.meta.url).href,
   flagKu: new URL("./assets/flag-ku.png", import.meta.url).href,
   flagEn: new URL("./assets/flag-en.png", import.meta.url).href
+  ,appLogo: new URL("./assets/app-logo.png", import.meta.url).href
 };
 
 type IconName =
@@ -66,6 +67,7 @@ const languages: { label: Language; icon?: string; symbol?: IconName }[] = [
 
 const defaultSettings: AppSettings = {
   parallelJobs: 3,
+  transcriptionProfile: "Konuşma",
   defaultQuality: "Dengeli",
   defaultLanguage: "Türkçe",
   timestamps: true,
@@ -120,7 +122,7 @@ function SvgIcon({ name, className = "" }: { name: IconName; className?: string 
 function LogoMark({ small = false }: { small?: boolean }) {
   return (
     <span className={`logo-mark ${small ? "small" : ""}`} aria-hidden="true">
-      <i /><i /><i /><i /><i />
+      <img src={assets.appLogo} alt="" />
     </span>
   );
 }
@@ -181,7 +183,7 @@ function App() {
     if (!files.length) return;
     const created = files
       .filter((file, index, list) => file.path && list.findIndex((item) => item.path === file.path) === index)
-      .filter((file) => !jobs.some((job) => job.sourceType === "file" && job.sourcePath === file.path && job.status !== "Hata"))
+      .filter((file) => !jobs.some((job) => job.sourceType !== "youtube" && job.sourcePath === file.path && job.status !== "Hata"))
       .map((file) => newJobFromFile(file, settings));
     if (!created.length) {
       showNotice("Bu dosya zaten kuyrukta.");
@@ -510,7 +512,7 @@ function HomePage(props: {
       <div className="or-line"><span /> veya <span /></div>
       <div className="youtube-row glass-card">
         <div className="youtube-card">
-          {props.youtubeInfo?.thumbnail ? <img className="thumbnail" src={props.youtubeInfo.thumbnail} alt="Video küçük resmi" /> : <div className="thumbnail empty"><img src={assets.youtube} alt="" /></div>}
+          {props.youtubeInfo?.thumbnail ? <img className="youtube-thumbnail" src={props.youtubeInfo.thumbnail} alt="Video küçük resmi" /> : <div className="youtube-placeholder"><img src={assets.youtube} alt="YouTube" /></div>}
           <h3>{props.youtubeInfo?.title || "Video bilgisi bekleniyor"}</h3>
           <p>{props.youtubeInfo?.channel || "Kanal: -"}</p>
           <p>Süre: {props.youtubeInfo?.duration || "-"}</p>
@@ -577,7 +579,7 @@ function QueuePage(props: {
         {props.jobs.length === 0 && <div className="empty-state">Henüz dosya eklenmedi. Başlamak için Dosya Seç düğmesine basın.</div>}
         {props.jobs.map((job) => (
           <div className={`job-row ${props.selectedId === job.id ? "selected" : ""}`} key={job.id} onClick={() => props.setSelectedId(job.id)}>
-            <div className="file-cell"><span className="file-icon"><img src={job.sourceType === "youtube" ? assets.youtube : job.format === "MP4" || job.format === "MOV" || job.format === "AVI" || job.format === "MKV" ? assets.file : assets.audio} alt="" /></span><div><b title={job.name}>{job.name}</b><p>{job.format} • {job.duration} • {job.sizeText}</p></div></div>
+            <div className="file-cell"><span className="file-icon"><img src={sourceIcon(job)} alt="" /></span><div><b title={job.name}>{job.name}</b><p>{job.format} • {job.duration} • {job.sizeText}</p></div></div>
             <StatusPill status={job.status} />
             <div className="small-lines"><span>{job.quality}</span><span>{job.language}</span></div>
             <div><b>{job.progress}%</b><div className="progress"><i style={{ width: `${job.progress}%` }} /></div></div>
@@ -604,8 +606,7 @@ function QueuePage(props: {
           {props.activeJob && props.activeJob.status === "İşleniyor" ? (
             <>
               <b title={props.activeJob.name}>{props.activeJob.name}</b>
-              <p>{props.activeJob.status} • %{props.activeJob.progress}</p>
-              <div className="progress large"><i style={{ width: `${props.activeJob.progress}%` }} /></div>
+              <JobProgress job={props.activeJob} />
               <AudioPlayer job={props.activeJob} compact />
               <dl><dt>Kalite</dt><dd>{props.activeJob.quality}</dd><dt>Dil</dt><dd>{props.activeJob.language}</dd><dt>Kalan</dt><dd>{props.activeJob.remaining}</dd></dl>
               <button className="ghost-btn block" onClick={() => props.stopJob(props.activeJob!)}>İşlemeyi Durdur</button>
@@ -617,6 +618,10 @@ function QueuePage(props: {
   );
 }
 
+function JobProgress({ job }: { job: JobRecord }) {
+  return <div className="job-progress" aria-label={`Dönüştürme ilerlemesi yüzde ${job.progress}`}><p>{job.stage} • %{job.progress}</p><div className="progress large"><i style={{ width: `${job.progress}%` }} /></div></div>;
+}
+
 function ResultPage({ job, exportCurrent, rerun, updateTranscript }: { job?: JobRecord; exportCurrent: (type: "pdf" | "docx" | "txt") => void; rerun: (job: JobRecord) => void; updateTranscript: (id: string, transcript: string) => void }) {
   const [timelineSearch, setTimelineSearch] = useState("");
   const [seekRequest, setSeekRequest] = useState<{ seconds: number; nonce: number }>();
@@ -625,7 +630,7 @@ function ResultPage({ job, exportCurrent, rerun, updateTranscript }: { job?: Job
   return (
     <section className="page result-page">
       <div className="result-hero glass-card">
-        <div className="file-badge"><img src={job.sourceType === "youtube" ? assets.youtube : assets.audio} alt="" /></div>
+        <div className="file-badge"><img src={sourceIcon(job)} alt="" /></div>
         <div className="result-info">
           <h2>{job.name}</h2>
           <div className="meta-list"><span>Süre<br /><b>{job.duration}</b></span><span>Kalite<br /><b>{job.quality}</b></span><span>Dil<br /><b>{job.language}</b></span><span>Durum<br /><b>{job.status}</b></span></div>
@@ -660,7 +665,7 @@ function ResultPage({ job, exportCurrent, rerun, updateTranscript }: { job?: Job
 function SettingsPage({ settings, setSettings, saveSettings, resetSettings }: { settings: AppSettings; setSettings: (settings: AppSettings) => void; saveSettings: (settings?: AppSettings) => void; resetSettings: () => void }) {
   return (
     <section className="page settings-grid">
-      <div className="glass-card settings-card"><h2><span>1</span> Dönüştürme</h2><ChoiceCard title="Varsayılan kalite" items={qualities} selected={settings.defaultQuality} onSelect={(value) => setSettings({ ...settings, defaultQuality: value as Quality })} /><LanguageCard selected={settings.defaultLanguage} onSelect={(value) => setSettings({ ...settings, defaultLanguage: value })} /><label className="setting-select"><b>Aynı anda dönüştürülecek dosya</b><select value={settings.parallelJobs} onChange={(e) => setSettings({ ...settings, parallelJobs: Number(e.target.value) as 1 | 2 | 3 })}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label><Toggle label="Zaman damgaları" checked={settings.timestamps} onChange={(checked) => setSettings({ ...settings, timestamps: checked })} /><Toggle label="Metni otomatik düzelt" checked={settings.autoCorrect} onChange={(checked) => setSettings({ ...settings, autoCorrect: checked })} /></div>
+      <div className="glass-card settings-card"><h2><span>1</span> Dönüştürme</h2><ChoiceCard title="Varsayılan kalite" items={qualities} selected={settings.defaultQuality} onSelect={(value) => setSettings({ ...settings, defaultQuality: value as Quality })} /><LanguageCard selected={settings.defaultLanguage} onSelect={(value) => setSettings({ ...settings, defaultLanguage: value })} /><label className="setting-select"><b>İçerik profili</b><select value={settings.transcriptionProfile} onChange={(e) => setSettings({ ...settings, transcriptionProfile: e.target.value as AppSettings["transcriptionProfile"] })}><option>Konuşma</option><option>Müzik/Vokal</option></select></label><label className="setting-select"><b>Aynı anda dönüştürülecek dosya</b><select value={settings.parallelJobs} onChange={(e) => setSettings({ ...settings, parallelJobs: Number(e.target.value) as 1 | 2 | 3 })}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label><Toggle label="Zaman damgaları" checked={settings.timestamps} onChange={(checked) => setSettings({ ...settings, timestamps: checked })} /><Toggle label="Metni otomatik düzelt" checked={settings.autoCorrect} onChange={(checked) => setSettings({ ...settings, autoCorrect: checked })} /></div>
       <div className="glass-card settings-card"><h2><span>2</span> Görünüm</h2><Toggle label="Şeffaf tema" sub="Arka planı ve cam efektlerini etkinleştir" checked={settings.transparentTheme} onChange={(checked) => setSettings({ ...settings, transparentTheme: checked })} /><Toggle label="Animasyonlar" sub="Geçiş ve animasyon efektlerini etkinleştir" checked={settings.animations} onChange={(checked) => setSettings({ ...settings, animations: checked })} /></div>
       <div className="glass-card settings-card"><h2><span>3</span> Ses Efektleri</h2><Toggle label="Ses efektlerini etkinleştir" checked={settings.soundEffects} onChange={(checked) => setSettings({ ...settings, soundEffects: checked })} /><SoundRow settings={settings} label="Dosya eklendi" /><SoundRow settings={settings} label="Dönüştürme başladı" /><SoundRow settings={settings} label="Başarılı" /><SoundRow settings={settings} label="Hata" /></div>
       <div className="glass-card settings-card info-list"><h2><span>4</span> Bilgi</h2>{["Hızlı dönüştürme", "Gizlilik odaklı", "Tek kurulum", "Kolay kullanım"].map((item) => <p key={item}><SvgIcon name="check" /> <b>{item}</b></p>)}<small>Yapan: Mustafa Yılmaz<br />© 2026 Mustafa Yılmaz. Tüm hakları saklıdır.</small></div>
@@ -693,7 +698,8 @@ function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; c
   const [volume, setVolume] = useState(0.8);
   const [lastVolume, setLastVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
-  const mediaPath = job?.previewPath || (job?.sourceType === "file" ? job.sourcePath : "");
+  const [playbackError, setPlaybackError] = useState("");
+  const mediaPath = job?.previewPath || (job?.sourceType !== "youtube" ? job?.sourcePath || "" : "");
   const src = mediaPath ? toFileUrl(mediaPath) : "";
   const total = duration || job?.durationSeconds || 0;
   const percent = total > 0 ? Math.min(100, (current / total) * 100) : 0;
@@ -702,6 +708,7 @@ function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; c
     setPlaying(false);
     setCurrent(0);
     setDuration(0);
+    setPlaybackError("");
     if (audio.current) {
       audio.current.pause();
       audio.current.currentTime = 0;
@@ -740,13 +747,15 @@ function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; c
         onError={() => {
           setPlaying(false);
           setCurrent(0);
+          setPlaybackError("Ses dosyası açılamadı veya desteklenmeyen bir codec kullanıyor.");
         }}
       />
       <div className="audio-controls">
       <button className="round-play" disabled={!src} onClick={() => {
         if (!audio.current || !src) return;
         if (audio.current.paused) {
-          void audio.current.play().catch(() => setPlaying(false));
+          setPlaybackError("");
+          void audio.current.play().catch((error) => { setPlaying(false); setPlaybackError(`Ses oynatılamadı: ${error instanceof Error ? error.message : "Bilinmeyen hata"}`); });
         } else {
           audio.current.pause();
         }
@@ -765,8 +774,8 @@ function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; c
           step="0.1"
           value={Math.min(current, Math.max(total, 1))}
           disabled={!src}
-          onChange={(event) => {
-            const next = Number(event.target.value);
+          onInput={(event) => {
+            const next = Number(event.currentTarget.value);
             setCurrent(next);
             if (audio.current) audio.current.currentTime = next;
           }}
@@ -784,6 +793,7 @@ function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; c
         setMuted(true);
       }}><SvgIcon name={muted || volume === 0 ? "soundOff" : "sound"} /></button>
       <input className="volume-range" aria-label="Ses seviyesi" type="range" min="0" max="1" step="0.01" value={muted ? 0 : volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); setMuted(next === 0); if (next > 0) setLastVolume(next); }} />
+      {playbackError && <p className="audio-error" role="alert">{playbackError}</p>}
     </div>
   );
 }
@@ -832,10 +842,11 @@ function pageSubtitle(page: Page) {
 }
 
 function newJobFromFile(file: MediaFile, settings: AppSettings): JobRecord {
+  const videoFormats = new Set(["MP4", "MKV", "WEBM", "MOV", "AVI", "WMV"]);
   return {
     id: crypto.randomUUID(),
     sourcePath: file.path,
-    sourceType: "file",
+    sourceType: videoFormats.has(file.format.toUpperCase()) ? "local-video" : "local-audio",
     name: file.name,
     format: file.format,
     sizeText: file.sizeText,
@@ -879,13 +890,7 @@ function newJobFromYoutube(info: YouTubeInfo, settings: AppSettings, idPrefix = 
 }
 
 function toFileUrl(filePath: string) {
-  const normalized = filePath.replace(/\\/g, "/");
-  const absolutePath = normalized.startsWith("/") ? normalized : `/${normalized}`;
-  const encodedPath = absolutePath
-    .split("/")
-    .map((part, index) => (index === 1 && /^[A-Za-z]:$/.test(part) ? part : encodeURIComponent(part)))
-    .join("/");
-  return `file://${encodedPath}`;
+  return `app-media://local/media?path=${encodeURIComponent(filePath)}`;
 }
 
 function formatClock(seconds: number) {
@@ -896,6 +901,12 @@ function formatClock(seconds: number) {
   const s = total % 60;
   if (h > 0) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function sourceIcon(job: JobRecord) {
+  if (job.sourceType === "youtube") return assets.youtube;
+  if (job.sourceType === "local-video" || ["MP4", "MKV", "WEBM", "MOV", "AVI", "WMV"].includes(job.format.toUpperCase())) return assets.file;
+  return assets.audio;
 }
 
 function parseTranscriptSegments(transcript: string) {

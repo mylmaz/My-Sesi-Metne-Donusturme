@@ -4,6 +4,7 @@ export type JobStatus = "Bekliyor" | "İşleniyor" | "Tamamlandı" | "Hata" | "�
 
 export interface AppSettings {
   parallelJobs: 1 | 2 | 3;
+  transcriptionProfile: "Konuşma" | "Müzik/Vokal";
   defaultQuality: Quality;
   defaultLanguage: Language;
   timestamps: boolean;
@@ -37,7 +38,7 @@ export interface YouTubeInfo {
 export interface JobRecord {
   id: string;
   sourcePath: string;
-  sourceType: "file" | "youtube";
+  sourceType: "youtube" | "local-audio" | "local-video" | "file";
   previewPath?: string;
   name: string;
   format: string;

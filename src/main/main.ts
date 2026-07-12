@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { pathToFileURL } from "url";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 
@@ -13,6 +14,7 @@ type JobStatus = "Bekliyor" | "İşleniyor" | "Tamamlandı" | "Hata" | "İptal E
 
 interface AppSettings {
   parallelJobs: 1 | 2 | 3;
+  transcriptionProfile: "Konuşma" | "Müzik/Vokal";
   defaultQuality: Quality;
   defaultLanguage: Language;
   timestamps: boolean;
@@ -25,7 +27,7 @@ interface AppSettings {
 interface JobRecord {
   id: string;
   sourcePath: string;
-  sourceType: "file" | "youtube";
+  sourceType: "youtube" | "local-audio" | "local-video" | "file";
   previewPath?: string;
   name: string;
   format: string;
@@ -58,6 +60,7 @@ interface PreparedAudio {
 
 const defaultSettings: AppSettings = {
   parallelJobs: 3,
+  transcriptionProfile: "Konuşma",
   defaultQuality: "Dengeli",
   defaultLanguage: "Türkçe",
   timestamps: true,
@@ -71,6 +74,7 @@ const supportedMediaExtensions = new Set([".mp3", ".wav", ".m4a", ".mp4", ".webm
 let mainWindow: BrowserWindow | null = null;
 const activeProcesses = new Map<string, Set<ChildProcessWithoutNullStreams>>();
 const cancelledJobs = new Set<string>();
+const etaStates = new Map<string, { stage: string; lastAt: number; lastValue: number; speed: number; samples: number }>();
 
 class UserVisibleError extends Error {}
 class CancelledError extends Error {}
@@ -86,6 +90,9 @@ function runtimeLog(message: string) {
 
 process.on("uncaughtException", (error) => runtimeLog(`uncaughtException: ${error.stack || error.message}`));
 process.on("unhandledRejection", (error) => runtimeLog(`unhandledRejection: ${String(error)}`));
+
+protocol.registerSchemesAsPrivileged([{ scheme: "app-media", privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
+app.setAppUserModelId("com.mustafayilmaz.mysesimetnedonusturme");
 
 function createWindow() {
   runtimeLog("createWindow:start");
@@ -126,6 +133,16 @@ function createWindow() {
 
 app.whenReady().then(() => {
   runtimeLog("app:ready");
+  protocol.handle("app-media", (request) => {
+    try {
+      const mediaPath = new URL(request.url).searchParams.get("path") || "";
+      if (!path.isAbsolute(mediaPath) || !fs.existsSync(mediaPath) || !fs.statSync(mediaPath).isFile()) return new Response("Medya bulunamadı", { status: 404 });
+      return net.fetch(pathToFileURL(mediaPath).toString(), { headers: request.headers });
+    } catch (error) {
+      runtimeLog(`media:protocol:error:${String(error)}`);
+      return new Response("Medya açılamadı", { status: 400 });
+    }
+  });
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -143,7 +160,7 @@ function appDataDir() {
 }
 
 function outputDir() {
-  const dir = path.join(app.getPath("documents"), "My Sesi Metne Donusturme Ciktilar");
+  const dir = process.env.ELECTRON_SMOKE_OUTPUT_DIR || path.join(app.getPath("documents"), "My Sesi Metne Donusturme Ciktilar");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -230,7 +247,8 @@ async function ensureModel(jobId: string, startedAt: number) {
     transform(chunk, controller) {
       received += chunk.byteLength;
       const percent = total > 0 ? Math.min(12, Math.max(1, (received / total) * 12)) : 1;
-      emitProgress(jobId, percent, "Whisper modeli indiriliyor", startedAt, `${formatBytes(received)} / ${formatBytes(total)}`);
+      const eta = stageEta(jobId, "Whisper modeli indiriliyor", received, total);
+      emitProgress(jobId, percent, "Whisper modeli indiriliyor", startedAt, `${eta} · ${formatBytes(received)} / ${formatBytes(total)}`);
       controller.enqueue(chunk);
     }
   });
@@ -406,6 +424,7 @@ async function inspectMediaFile(file: string): Promise<PreparedAudio> {
 function sanitizeSettings(settings: Partial<AppSettings> | undefined): AppSettings {
   return {
     parallelJobs: settings?.parallelJobs === 1 || settings?.parallelJobs === 2 || settings?.parallelJobs === 3 ? settings.parallelJobs : 3,
+    transcriptionProfile: settings?.transcriptionProfile === "Müzik/Vokal" ? "Müzik/Vokal" : "Konuşma",
     defaultQuality: settings?.defaultQuality && ["Hızlı", "Dengeli", "Yüksek Doğruluk"].includes(settings.defaultQuality) ? settings.defaultQuality : defaultSettings.defaultQuality,
     defaultLanguage: settings?.defaultLanguage && ["Otomatik", "Türkçe", "Kürtçe", "İngilizce"].includes(settings.defaultLanguage) ? settings.defaultLanguage : defaultSettings.defaultLanguage,
     timestamps: settings?.timestamps !== false,
@@ -429,7 +448,11 @@ function requestedBeam(quality: Quality) {
   return 8;
 }
 
-function initialPrompt(language: Language) {
+function initialPrompt(language: Language, profile: AppSettings["transcriptionProfile"]) {
+  if (profile === "Müzik/Vokal") {
+    if (language === "İngilizce") return "Song or vocal recording. Transcribe every clearly audible lyric faithfully. Do not replace lyrics with a music description.";
+    return "Türkçe şarkı veya vokal kaydı. Net duyulan tüm sözleri sırasıyla ve olduğu gibi yaz. Şarkı sözlerini müzik açıklamasıyla değiştirme, duyulmayan sözleri uydurma.";
+  }
   if (language === "İngilizce") return "Speech recording. Transcribe faithfully. Do not invent unclear parts.";
   if (language === "Kürtçe") return "Kürtçe konuşma kaydı. Konuşulan kelimeleri olduğu gibi yaz. Anlaşılmayan bölümleri uydurma.";
   if (language === "Otomatik") return "Konuşma kaydı. Dili otomatik algıla. Anlaşılmayan bölümleri uydurma.";
@@ -516,30 +539,34 @@ function normalizeTranscript(text: string, settings: AppSettings) {
   return cleanTranscript(text);
 }
 
-function estimateRemaining(startedAt: number | undefined, processedSeconds: number, totalSeconds: number) {
-  if (!startedAt || processedSeconds <= 1 || totalSeconds <= 0) return "Hesaplanıyor…";
-  const elapsed = Math.max(1, (Date.now() - startedAt) / 1000);
-  const speed = processedSeconds / elapsed;
-  if (!Number.isFinite(speed) || speed <= 0) return "Hesaplanıyor…";
-  const remaining = (totalSeconds - processedSeconds) / speed;
-  if (!Number.isFinite(remaining) || remaining < 0) return "Hesaplanıyor…";
-  return formatDuration(remaining);
+function stageEta(id: string, stage: string, completed: number, total: number) {
+  const now = Date.now();
+  const previous = etaStates.get(id);
+  if (!previous || previous.stage !== stage || completed < previous.lastValue) {
+    etaStates.set(id, { stage, lastAt: now, lastValue: completed, speed: 0, samples: 0 });
+    return "Hesaplanıyor…";
+  }
+  const elapsed = (now - previous.lastAt) / 1000;
+  const delta = completed - previous.lastValue;
+  if (elapsed >= 0.4 && delta > 0) {
+    const instant = delta / elapsed;
+    previous.speed = previous.samples ? previous.speed * 0.72 + instant * 0.28 : instant;
+    previous.samples += 1;
+    previous.lastAt = now;
+    previous.lastValue = completed;
+  }
+  if (previous.samples < 2 || previous.speed <= 0 || total <= completed) return total <= completed ? "Birkaç saniye" : "Hesaplanıyor…";
+  return formatDuration(Math.max(1, (total - completed) / previous.speed));
 }
 
 function emitProgress(id: string, progress: number, stage: string, startedAt?: number, remainingOverride?: string) {
-  const elapsed = startedAt ? (Date.now() - startedAt) / 1000 : 0;
-  let remaining = "Hesaplanıyor…";
-  if (progress > 5 && startedAt) {
-    const total = elapsed / (progress / 100);
-    remaining = formatDuration(Math.max(3, total - elapsed));
-  }
-  mainWindow?.webContents.send("transcribe:progress", { id, progress: Math.round(clamp(progress, 0, 100)), stage, remaining: remainingOverride || remaining });
+  mainWindow?.webContents.send("transcribe:progress", { id, progress: Math.round(clamp(progress, 0, 100)), stage, remaining: remainingOverride || "Hesaplanıyor…" });
 }
 
 function emitMediaProgress(id: string, processedSeconds: number, totalSeconds: number, startPercent: number, endPercent: number, stage: string, startedAt?: number) {
   const ratio = totalSeconds > 0 ? clamp(processedSeconds / totalSeconds, 0, 1) : 0;
   const progress = startPercent + (endPercent - startPercent) * ratio;
-  emitProgress(id, progress, stage, startedAt, estimateRemaining(startedAt, processedSeconds, totalSeconds));
+  emitProgress(id, progress, stage, startedAt, stageEta(id, stage, processedSeconds, totalSeconds));
 }
 
 function parseProcessTime(line: string) {
@@ -625,7 +652,10 @@ async function downloadYoutubeAudio(url: string, targetDir: string, jobId?: stri
     onLine: (line) => {
       if (!jobId) return;
       const match = line.match(/(\d{1,3}(?:\.\d+)?)%/);
-      if (match) emitProgress(jobId, Math.min(18, 4 + Number(match[1]) * 0.14), "YouTube sesi hazırlanıyor", startedAt);
+      if (match) {
+        const completed = Number(match[1]);
+        emitProgress(jobId, Math.min(18, 4 + completed * 0.14), "YouTube sesi hazırlanıyor", startedAt, stageEta(jobId, "YouTube sesi hazırlanıyor", completed, 100));
+      }
     }
   });
   const downloaded = fs.readdirSync(targetDir).find((name) => /^audio\./i.test(name));
@@ -641,7 +671,7 @@ async function prepareYouTubePreview(url: string, jobId?: string, startedAt?: nu
 }
 
 async function prepareInput(job: JobRecord, dir: string, startedAt?: number) {
-  if (job.sourceType === "file") {
+  if (job.sourceType !== "youtube") {
     if (!job.sourcePath || !fs.existsSync(job.sourcePath)) throw new UserVisibleError("Seçilen medya dosyası bulunamadı.");
     if (fs.statSync(job.sourcePath).size === 0) throw new UserVisibleError("Seçilen medya dosyası boş.");
     if (!supportedMediaExtensions.has(path.extname(job.sourcePath).toLowerCase())) throw new UserVisibleError("Bu dosya biçimi desteklenmiyor.");
@@ -662,9 +692,11 @@ ipcMain.handle("settings:reset", () => {
   writeJson(settingsPath(), defaultSettings);
   return defaultSettings;
 });
-ipcMain.handle("history:get", () => readJson<JobRecord[]>(historyPath(), []).map((job) =>
-  job.status === "İşleniyor" ? { ...job, status: "Bekliyor" as const, stage: "Yeniden başlatılmayı bekliyor", progress: 0, remaining: "Bekliyor" } : job
-));
+ipcMain.handle("history:get", () => readJson<JobRecord[]>(historyPath(), []).map((job) => {
+  const extension = path.extname(job.sourcePath || job.name).toLowerCase();
+  const sourceType = job.sourceType === "file" ? ([".mp4", ".mkv", ".webm", ".mov", ".avi", ".wmv"].includes(extension) ? "local-video" : "local-audio") : job.sourceType;
+  return job.status === "İşleniyor" ? { ...job, sourceType, status: "Bekliyor" as const, stage: "Yeniden başlatılmayı bekliyor", progress: 0, remaining: "Bekliyor" } : { ...job, sourceType };
+}));
 ipcMain.handle("history:save", (_event, jobs: JobRecord[]) => {
   writeJson(historyPath(), jobs);
   return true;
@@ -807,9 +839,10 @@ async function transcribeChunks(job: JobRecord, settings: AppSettings, whisper: 
       beam.toString(),
       "-pp",
       "--prompt",
-      initialPrompt(job.language),
+      initialPrompt(job.language, settings.transcriptionProfile),
       "--carry-initial-prompt"
     ];
+    args.push("-nth", settings.transcriptionProfile === "Müzik/Vokal" ? "0.80" : "0.60");
     if (code !== "auto") args.push("-l", code);
     await runProcess(whisper, args, {
       jobId: job.id,
@@ -949,6 +982,7 @@ ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppS
   } finally {
     activeProcesses.delete(job.id);
     cancelledJobs.delete(job.id);
+    etaStates.delete(job.id);
     try {
       fs.rmSync(dir, { recursive: true, force: true });
     } catch (error) {
@@ -978,6 +1012,7 @@ ipcMain.handle("export:file", async (_event, payload: { type: "pdf" | "docx" | "
     return { path: await exportTxt(payload.job, targetPath) };
   } catch (error) {
     if (error instanceof UserVisibleError) throw error;
+    runtimeLog(`export:${payload.type}:error:${error instanceof Error ? error.stack || error.message : String(error)} target=${targetPath}`);
     throw new UserVisibleError("Dosya kaydedilemedi. Seçilen klasör izinlerini ve disk alanını kontrol edin.");
   }
 });
