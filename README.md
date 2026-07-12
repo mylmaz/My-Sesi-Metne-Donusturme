@@ -4,8 +4,8 @@ Windows için tek tıkla kurulabilen masaüstü ses/video transkripsiyon uygulam
 
 ## Kullanıcı İçin Kurulum
 
-1. GitHub Release sayfasından `My-Sesi-Metne-Donusturme-Setup-v1.0.0.exe` dosyasını indirin.
-2. Dosyaya çift tıklayın ve kurulum adımlarını izleyin.
+1. GitHub Release sayfasından `My-Sesi-Metne-Donusturme-Setup-v1.0.0.zip` dosyasını indirin.
+2. ZIP'i çıkartıp içindeki kurulum EXE'sine çift tıklayın.
 3. Kurulum sonunda masaüstü kısayolu ve Başlat menüsü kısayolu oluşur.
 4. Uygulamayı açın; terminal, Python veya npm komutu gerekmez.
 

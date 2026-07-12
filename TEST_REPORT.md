@@ -25,6 +25,10 @@ Platform: Windows x64
 - `app-media://` üzerinden gerçek ses oynatma (`currentTime > 0`, `duration > 0`): geçti.
 - YouTube vokal videosu metadata, indirme ve gerçek transkripsiyon: geçti (1508 karakter).
 - YouTube Türkçe konuşma videosu metadata, indirme ve gerçek transkripsiyon: geçti (3678 karakter).
+- Hızlı/Dengeli/Yüksek Doğruluk karşılaştırması: üç mod da geçti ve aynı kısa örnekte 60 karakter üretti.
+- Paketli ASAR içinden Türkçe PDF üretimi: geçti (`PACKAGED_PDF_OK`, 15.490 bayt).
+- PDF paket hatasının kökü electron-builder tarafından eksik toplanan `call-bind-apply-helpers` modülüydü; PDFKit standalone dağıtımına geçilerek kaldırıldı.
+- Son dağıtım tek ZIP ve ZIP içinde tek installer EXE olarak üretildi.
 
 Komut: `npm run test:electron`
 

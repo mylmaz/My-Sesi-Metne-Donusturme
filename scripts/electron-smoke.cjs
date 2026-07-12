@@ -150,6 +150,7 @@ async function run() {
   }
 
   const job = createJob(`smoke-${Date.now()}`, mediaPath);
+  if (["Hızlı", "Dengeli", "Yüksek Doğruluk"].includes(process.env.ELECTRON_TEST_QUALITY)) job.quality = process.env.ELECTRON_TEST_QUALITY;
   const completed = await window.webContents.executeJavaScript(
     `window.desktopApi.transcribe(${JSON.stringify(job)}, ${JSON.stringify(settings)})`
   );
