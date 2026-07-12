@@ -25,6 +25,45 @@ async function getReadyWindow() {
   throw new Error("Electron test penceresi yüklenemedi.");
 }
 
+async function runUiChecks(window) {
+  const sizes = [
+    [1366, 768],
+    [1600, 900],
+    [1920, 1080]
+  ];
+  for (const [width, height] of sizes) {
+    window.setSize(width, height);
+    await wait(120);
+    const overflow = await window.webContents.executeJavaScript(`(() => {
+      const bad = [];
+      for (const el of document.querySelectorAll('.page, .topbar, .queue-main, .job-row, .active-card, .result-hero, .audio-player')) {
+        if (el.scrollWidth > el.clientWidth + 3) bad.push(el.className || el.tagName);
+      }
+      return bad;
+    })()`);
+    if (overflow.length) throw new Error(`UI taşma kontrolü başarısız (${width}x${height}): ${overflow.join(", ")}`);
+  }
+
+  const uiResult = await window.webContents.executeJavaScript(`(async () => {
+    const clickText = (selector, text) => {
+      const button = Array.from(document.querySelectorAll(selector)).find((item) => item.textContent.includes(text));
+      if (!button) throw new Error(text + ' düğmesi bulunamadı.');
+      button.click();
+    };
+    for (const label of ['Anasayfa', 'Geçmiş', 'Ayarlar', 'Yardım']) clickText('.nav-item', label);
+    clickText('.nav-item', 'Ayarlar');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    for (const input of document.querySelectorAll('.toggle-row input')) input.click();
+    for (const input of document.querySelectorAll('.toggle-row input')) input.click();
+    for (const button of document.querySelectorAll('.sound-row button')) button.click();
+    clickText('.settings-actions button', 'Kaydet');
+    clickText('.settings-actions button', 'Varsayılana Dön');
+    clickText('.nav-item', 'Anasayfa');
+    return 'UI_OK';
+  })()`);
+  if (uiResult !== "UI_OK") throw new Error("UI button smoke doğrulaması başarısız.");
+}
+
 function createJob(id, sourcePath) {
   return {
     id,
@@ -47,6 +86,31 @@ function createJob(id, sourcePath) {
   };
 }
 
+function createYouTubeJob(id, info, prepared) {
+  return {
+    id,
+    sourcePath: info.url,
+    sourceType: "youtube",
+    previewPath: prepared.path,
+    name: info.title,
+    format: prepared.format || "YouTube",
+    sizeText: prepared.sizeText || "-",
+    duration: prepared.duration || info.duration || "--:--",
+    durationSeconds: prepared.durationSeconds || 0,
+    quality: "Hızlı",
+    language: "Otomatik",
+    status: "Bekliyor",
+    stage: "Bekliyor",
+    progress: 0,
+    remaining: "Bekliyor",
+    transcript: "",
+    outputFiles: {},
+    createdAt: new Date().toISOString(),
+    thumbnail: info.thumbnail,
+    channel: info.channel
+  };
+}
+
 async function run() {
   if (!fs.existsSync(mediaPath)) {
     throw new Error(`Test medyası bulunamadı: ${mediaPath}`);
@@ -55,7 +119,9 @@ async function run() {
   require(path.join(appRoot, "dist-electron", "main", "main.js"));
   await app.whenReady();
   const window = await getReadyWindow();
+  await runUiChecks(window);
   const settings = {
+    parallelJobs: 3,
     defaultQuality: "Hızlı",
     defaultLanguage: "Türkçe",
     timestamps: true,
@@ -95,11 +161,32 @@ async function run() {
     throw new Error(`Gerçek süreç iptali doğrulanamadı: ${cancelled.status}`);
   }
 
+  let youtubeSummary = "skipped";
+  if (process.env.ELECTRON_TEST_YOUTUBE) {
+    const info = await window.webContents.executeJavaScript(
+      `window.desktopApi.getYouTubeInfo(${JSON.stringify(process.env.ELECTRON_TEST_YOUTUBE)})`
+    );
+    const prepared = await window.webContents.executeJavaScript(
+      `window.desktopApi.prepareYouTubeAudio(${JSON.stringify(info.url)})`
+    );
+    if (!prepared.path || !fs.existsSync(prepared.path) || fs.statSync(prepared.path).size === 0) {
+      throw new Error("YouTube ses hazırlama doğrulaması başarısız.");
+    }
+    const youtubeJob = createYouTubeJob(`youtube-${Date.now()}`, info, prepared);
+    const youtubeCompleted = await window.webContents.executeJavaScript(
+      `window.desktopApi.transcribe(${JSON.stringify(youtubeJob)}, ${JSON.stringify(settings)})`
+    );
+    if (youtubeCompleted.status !== "Tamamlandı" || !youtubeCompleted.transcript.trim() || !youtubeCompleted.previewPath || !fs.existsSync(youtubeCompleted.previewPath)) {
+      throw new Error("YouTube transkripsiyon doğrulaması başarısız.");
+    }
+    youtubeSummary = `passed:${youtubeCompleted.transcript.length}`;
+  }
+
   for (const file of new Set([completed.outputFiles.txt, ...exported])) {
     try { fs.unlinkSync(file); } catch { /* test çıktısı temizliği en iyi çabadır */ }
   }
 
-  console.log(`ELECTRON_SMOKE_OK|chars=${completed.transcript.length}|exports=txt,docx,pdf|cancel=passed`);
+  console.log(`ELECTRON_SMOKE_OK|ui=passed|chars=${completed.transcript.length}|exports=txt,docx,pdf|cancel=passed|youtube=${youtubeSummary}`);
 }
 
 run()
