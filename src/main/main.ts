@@ -1,14 +1,19 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, shell } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 
 type Quality = "Hızlı" | "Dengeli" | "Yüksek Doğruluk";
 type Language = "Otomatik" | "Türkçe" | "Kürtçe" | "İngilizce";
 type JobStatus = "Bekliyor" | "İşleniyor" | "Tamamlandı" | "Hata" | "İptal Edildi" | "Durduruldu";
 
 interface AppSettings {
+  parallelJobs: 1 | 2 | 3;
+  transcriptionProfile: "Konuşma" | "Müzik/Vokal";
   defaultQuality: Quality;
   defaultLanguage: Language;
   timestamps: boolean;
@@ -21,7 +26,8 @@ interface AppSettings {
 interface JobRecord {
   id: string;
   sourcePath: string;
-  sourceType: "file" | "youtube";
+  sourceType: "youtube" | "local-audio" | "local-video" | "file";
+  previewPath?: string;
   name: string;
   format: string;
   sizeText: string;
@@ -43,7 +49,17 @@ interface JobRecord {
   channel?: string;
 }
 
+interface PreparedAudio {
+  path: string;
+  format: string;
+  sizeText: string;
+  duration: string;
+  durationSeconds: number;
+}
+
 const defaultSettings: AppSettings = {
+  parallelJobs: 3,
+  transcriptionProfile: "Konuşma",
   defaultQuality: "Dengeli",
   defaultLanguage: "Türkçe",
   timestamps: true,
@@ -57,6 +73,7 @@ const supportedMediaExtensions = new Set([".mp3", ".wav", ".m4a", ".mp4", ".webm
 let mainWindow: BrowserWindow | null = null;
 const activeProcesses = new Map<string, Set<ChildProcessWithoutNullStreams>>();
 const cancelledJobs = new Set<string>();
+const etaStates = new Map<string, { stage: string; lastAt: number; lastValue: number; speed: number; samples: number }>();
 
 class UserVisibleError extends Error {}
 class CancelledError extends Error {}
@@ -72,6 +89,9 @@ function runtimeLog(message: string) {
 
 process.on("uncaughtException", (error) => runtimeLog(`uncaughtException: ${error.stack || error.message}`));
 process.on("unhandledRejection", (error) => runtimeLog(`unhandledRejection: ${String(error)}`));
+
+protocol.registerSchemesAsPrivileged([{ scheme: "app-media", privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
+app.setAppUserModelId("com.mustafayilmaz.mysesimetnedonusturme");
 
 function createWindow() {
   runtimeLog("createWindow:start");
@@ -112,6 +132,37 @@ function createWindow() {
 
 app.whenReady().then(() => {
   runtimeLog("app:ready");
+  protocol.handle("app-media", (request) => {
+    try {
+      const mediaPath = new URL(request.url).searchParams.get("path") || "";
+      if (!path.isAbsolute(mediaPath) || !fs.existsSync(mediaPath) || !fs.statSync(mediaPath).isFile()) return new Response("Medya bulunamadı", { status: 404 });
+      const size = fs.statSync(mediaPath).size;
+      const range = request.headers.get("range");
+      const mime: Record<string, string> = { ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".aac": "audio/aac", ".flac": "audio/flac", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".wma": "audio/x-ms-wma", ".mp4": "video/mp4", ".webm": "video/webm", ".mkv": "video/x-matroska", ".mov": "video/quicktime", ".avi": "video/x-msvideo" };
+      const headers = new Headers({ "Accept-Ranges": "bytes", "Content-Type": mime[path.extname(mediaPath).toLowerCase()] || "application/octet-stream" });
+      if (request.method === "HEAD") {
+        headers.set("Content-Length", String(size));
+        return new Response(null, { status: 200, headers });
+      }
+      let start = 0;
+      let end = size - 1;
+      if (range) {
+        const match = range.match(/^bytes=(\d*)-(\d*)$/);
+        if (!match) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+        if (match[1]) start = Number(match[1]);
+        if (match[2]) end = Math.min(Number(match[2]), size - 1);
+        if (!match[1] && match[2]) start = Math.max(0, size - Number(match[2]));
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+      }
+      headers.set("Content-Length", String(end - start + 1));
+      if (range) headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+      const body = Readable.toWeb(fs.createReadStream(mediaPath, { start, end })) as ReadableStream<Uint8Array>;
+      return new Response(body, { status: range ? 206 : 200, headers });
+    } catch (error) {
+      runtimeLog(`media:protocol:error:${String(error)}`);
+      return new Response("Medya açılamadı", { status: 400 });
+    }
+  });
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -129,7 +180,13 @@ function appDataDir() {
 }
 
 function outputDir() {
-  const dir = path.join(app.getPath("documents"), "My Sesi Metne Donusturme Ciktilar");
+  const dir = process.env.ELECTRON_SMOKE_OUTPUT_DIR || path.join(app.getPath("documents"), "My Sesi Metne Donusturme Ciktilar");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function previewDir() {
+  const dir = path.join(appDataDir(), "youtube-preview");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -155,11 +212,8 @@ function toolPath(folder: string, exe: string) {
 }
 
 function modelPath() {
-  const quantizedLarge = resolveResource("Tools", "models", "ggml-large-v2-q5_k.bin");
-  if (fs.existsSync(quantizedLarge)) return quantizedLarge;
-  const quantizedLargeFallback = resolveResource("Tools", "models", "ggml-large-v2-q5_0.bin");
-  if (fs.existsSync(quantizedLargeFallback)) return quantizedLargeFallback;
-  return resolveResource("Tools", "models", "ggml-large-v2.bin");
+  const managed = path.join(appDataDir(), "models", "ggml-large-v2.bin");
+  return fs.existsSync(managed) ? managed : resolveResource("Tools", "models", "ggml-large-v2.bin");
 }
 
 function requireFile(file: string, label: string, minimumBytes = 1) {
@@ -179,6 +233,52 @@ function requireTool(folder: string, executable: string, label: string) {
 
 function requireModel() {
   return requireFile(modelPath(), "Whisper Large-v2 model dosyası", 100 * 1024 * 1024);
+}
+
+const modelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2.bin";
+const modelSha256 = "9a423fe4d40c82774b6af34115b8b935f34152246eb19e80e376071d3f999487";
+
+async function fileSha256(file: string) {
+  const hash = createHash("sha256");
+  await pipeline(fs.createReadStream(file), hash);
+  return hash.digest("hex");
+}
+
+async function ensureModel(jobId: string, startedAt: number) {
+  try {
+    return requireModel();
+  } catch {
+    // Kurulumlu paket modeli ilk kullanımda yönetilen kullanıcı klasörüne indirir.
+  }
+  const dir = path.join(appDataDir(), "models");
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, "ggml-large-v2.bin");
+  const partial = `${target}.part`;
+  const existing = fs.existsSync(partial) ? fs.statSync(partial).size : 0;
+  emitProgress(jobId, 1, "Whisper modeli indiriliyor", startedAt, formatBytes(existing));
+  const response = await fetch(modelUrl, { headers: existing ? { Range: `bytes=${existing}-` } : {} });
+  if (!response.ok || !response.body) throw new UserVisibleError("Whisper modeli indirilemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.");
+  const append = existing > 0 && response.status === 206;
+  const base = append ? existing : 0;
+  const remaining = Number(response.headers.get("content-length") || 0);
+  const total = base + remaining;
+  let received = base;
+  const progress = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      received += chunk.byteLength;
+      const percent = total > 0 ? Math.min(12, Math.max(1, (received / total) * 12)) : 1;
+      const eta = stageEta(jobId, "Whisper modeli indiriliyor", received, total);
+      emitProgress(jobId, percent, "Whisper modeli indiriliyor", startedAt, `${eta} · ${formatBytes(received)} / ${formatBytes(total)}`);
+      controller.enqueue(chunk);
+    }
+  });
+  await pipeline(Readable.fromWeb(response.body.pipeThrough(progress) as never), fs.createWriteStream(partial, { flags: append ? "a" : "w" }));
+  if (await fileSha256(partial) !== modelSha256) {
+    fs.rmSync(partial, { force: true });
+    throw new UserVisibleError("Whisper modeli doğrulanamadı. İndirme yeniden başlatılacak; lütfen tekrar deneyin.");
+  }
+  fs.renameSync(partial, target);
+  return requireFile(target, "Whisper Large-v2 model dosyası", 100 * 1024 * 1024);
 }
 
 function settingsPath() {
@@ -298,6 +398,14 @@ function formatDuration(seconds: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function stableId(value: string) {
+  return createHash("sha1").update(value).digest("hex").slice(0, 20);
+}
+
 async function probeDuration(file: string) {
   try {
     const result = await runProcess(requireTool("ffmpeg", "ffprobe.exe", "FFprobe"), [
@@ -317,8 +425,26 @@ async function probeDuration(file: string) {
   }
 }
 
+async function inspectMediaFile(file: string): Promise<PreparedAudio> {
+  if (!file || !fs.existsSync(file)) throw new UserVisibleError("Seçilen medya dosyası bulunamadı.");
+  const stat = fs.statSync(file);
+  if (!stat.isFile() || stat.size === 0) throw new UserVisibleError("Seçilen medya dosyası boş veya okunamıyor.");
+  const extension = path.extname(file).toLowerCase();
+  if (!supportedMediaExtensions.has(extension)) throw new UserVisibleError("Bu dosya biçimi desteklenmiyor.");
+  const seconds = await probeDuration(file);
+  return {
+    path: file,
+    format: extension.replace(".", "").toUpperCase(),
+    sizeText: formatBytes(stat.size),
+    duration: formatDuration(seconds),
+    durationSeconds: seconds
+  };
+}
+
 function sanitizeSettings(settings: Partial<AppSettings> | undefined): AppSettings {
   return {
+    parallelJobs: settings?.parallelJobs === 1 || settings?.parallelJobs === 2 || settings?.parallelJobs === 3 ? settings.parallelJobs : 3,
+    transcriptionProfile: settings?.transcriptionProfile === "Müzik/Vokal" ? "Müzik/Vokal" : "Konuşma",
     defaultQuality: settings?.defaultQuality && ["Hızlı", "Dengeli", "Yüksek Doğruluk"].includes(settings.defaultQuality) ? settings.defaultQuality : defaultSettings.defaultQuality,
     defaultLanguage: settings?.defaultLanguage && ["Otomatik", "Türkçe", "Kürtçe", "İngilizce"].includes(settings.defaultLanguage) ? settings.defaultLanguage : defaultSettings.defaultLanguage,
     timestamps: settings?.timestamps !== false,
@@ -342,7 +468,11 @@ function requestedBeam(quality: Quality) {
   return 8;
 }
 
-function initialPrompt(language: Language) {
+function initialPrompt(language: Language, profile: AppSettings["transcriptionProfile"]) {
+  if (profile === "Müzik/Vokal") {
+    if (language === "İngilizce") return "Song or vocal recording. Transcribe every clearly audible lyric faithfully. Do not replace lyrics with a music description.";
+    return "Türkçe şarkı veya vokal kaydı. Net duyulan tüm sözleri sırasıyla ve olduğu gibi yaz. Şarkı sözlerini müzik açıklamasıyla değiştirme, duyulmayan sözleri uydurma.";
+  }
   if (language === "İngilizce") return "Speech recording. Transcribe faithfully. Do not invent unclear parts.";
   if (language === "Kürtçe") return "Kürtçe konuşma kaydı. Konuşulan kelimeleri olduğu gibi yaz. Anlaşılmayan bölümleri uydurma.";
   if (language === "Otomatik") return "Konuşma kaydı. Dili otomatik algıla. Anlaşılmayan bölümleri uydurma.";
@@ -360,7 +490,12 @@ function safeName(value: string) {
 function cleanTranscript(text: string) {
   let result = (text || "").trim();
   result = result.replace(/\s+([,.!?;:])/g, "$1");
-  result = result.replace(/([,.!?;:])(?=\S)/g, "$1 ");
+  result = result.replace(/([,.!?;:])(?=\S)/g, (match, punctuation: string, offset: number, source: string) => {
+    const previous = source[offset - 1] || "";
+    const next = source[offset + 1] || "";
+    if (punctuation === ":" && /\d/.test(previous) && /\d/.test(next)) return match;
+    return `${punctuation} `;
+  });
   result = result.replace(/[ \t]{2,}/g, " ");
   result = result.replace(/(^|\n)([a-zçğıöşü])/g, (_m, p1: string, p2: string) => p1 + p2.toLocaleUpperCase("tr-TR"));
   return result.trim();
@@ -382,7 +517,27 @@ function validateYouTubeUrl(value: string) {
   }
 }
 
-function parseSrt(content: string, timestamps: boolean) {
+function parseSrtTime(value: string) {
+  const match = value.trim().match(/(?:(\d{1,2}):)?(\d{1,2}):(\d{1,2})(?:[,.](\d{1,3}))?/);
+  if (!match) return 0;
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const milliseconds = Number((match[4] || "0").padEnd(3, "0"));
+  return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+}
+
+function formatTimestamp(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours > 0) return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function parseSrt(content: string, timestamps: boolean, offsetSeconds = 0) {
   const blocks = content.replace(/\r\n/g, "\n").split(/\n\s*\n/);
   const lines: string[] = [];
   for (const block of blocks) {
@@ -391,8 +546,10 @@ function parseSrt(content: string, timestamps: boolean) {
     if (!time) continue;
     const text = parts.filter((line) => !/^\d+$/.test(line) && !line.includes("-->")).join(" ").trim();
     if (!text) continue;
-    const start = time.split("-->")[0].trim().replace(",", ".").split(".")[0];
-    lines.push(`${timestamps ? `[${start}] ` : ""}${text}`);
+    const [startRaw, endRaw] = time.split("-->").map((value) => value.trim());
+    const start = parseSrtTime(startRaw) + offsetSeconds;
+    const end = parseSrtTime(endRaw || startRaw) + offsetSeconds;
+    lines.push(`${timestamps ? `[${formatTimestamp(start)} - ${formatTimestamp(Math.max(start, end))}] ` : ""}${text}`);
   }
   return cleanTranscript(lines.join("\n"));
 }
@@ -402,43 +559,147 @@ function normalizeTranscript(text: string, settings: AppSettings) {
   return cleanTranscript(text);
 }
 
-function emitProgress(id: string, progress: number, stage: string, startedAt?: number) {
-  const elapsed = startedAt ? (Date.now() - startedAt) / 1000 : 0;
-  let remaining = "Hesaplanıyor…";
-  if (progress > 5 && startedAt) {
-    const total = elapsed / (progress / 100);
-    remaining = formatDuration(Math.max(3, total - elapsed));
+function stageEta(id: string, stage: string, completed: number, total: number) {
+  const now = Date.now();
+  const previous = etaStates.get(id);
+  if (!previous || previous.stage !== stage || completed < previous.lastValue) {
+    etaStates.set(id, { stage, lastAt: now, lastValue: completed, speed: 0, samples: 0 });
+    return "Hesaplanıyor…";
   }
-  mainWindow?.webContents.send("transcribe:progress", { id, progress, stage, remaining });
+  const elapsed = (now - previous.lastAt) / 1000;
+  const delta = completed - previous.lastValue;
+  if (elapsed >= 0.4 && delta > 0) {
+    const instant = delta / elapsed;
+    previous.speed = previous.samples ? previous.speed * 0.72 + instant * 0.28 : instant;
+    previous.samples += 1;
+    previous.lastAt = now;
+    previous.lastValue = completed;
+  }
+  if (previous.samples < 2 || previous.speed <= 0 || total <= completed) return total <= completed ? "Birkaç saniye" : "Hesaplanıyor…";
+  return formatDuration(Math.max(1, (total - completed) / previous.speed));
 }
 
-async function prepareInput(job: JobRecord, dir: string) {
-  if (job.sourceType === "file") {
-    if (!job.sourcePath || !fs.existsSync(job.sourcePath)) throw new UserVisibleError("Seçilen medya dosyası bulunamadı.");
-    if (fs.statSync(job.sourcePath).size === 0) throw new UserVisibleError("Seçilen medya dosyası boş.");
-    if (!supportedMediaExtensions.has(path.extname(job.sourcePath).toLowerCase())) throw new UserVisibleError("Bu dosya biçimi desteklenmiyor.");
-    return job.sourcePath;
+function emitProgress(id: string, progress: number, stage: string, startedAt?: number, remainingOverride?: string) {
+  mainWindow?.webContents.send("transcribe:progress", { id, progress: Math.round(clamp(progress, 0, 100)), stage, remaining: remainingOverride || "Hesaplanıyor…" });
+}
+
+function emitMediaProgress(id: string, processedSeconds: number, totalSeconds: number, startPercent: number, endPercent: number, stage: string, startedAt?: number) {
+  const ratio = totalSeconds > 0 ? clamp(processedSeconds / totalSeconds, 0, 1) : 0;
+  const progress = startPercent + (endPercent - startPercent) * ratio;
+  emitProgress(id, progress, stage, startedAt, stageEta(id, stage, processedSeconds, totalSeconds));
+}
+
+function parseProcessTime(line: string) {
+  const ms = line.match(/out_time_ms=(\d+)/);
+  if (ms) return Number(ms[1]) / 1_000_000;
+  const us = line.match(/out_time_us=(\d+)/);
+  if (us) return Number(us[1]) / 1_000_000;
+  const text = line.match(/out_time=(\d{1,2}:\d{2}:\d{2}(?:\.\d+)?)/);
+  if (text) return parseSrtTime(text[1]);
+  const whisper = line.match(/\[(\d{1,2}:\d{2}:\d{2}(?:[,.]\d{1,3})?)\s*-->/);
+  if (whisper) return parseSrtTime(whisper[1]);
+  return 0;
+}
+
+function mapTranscriptionError(error: unknown) {
+  const detail = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  if (detail.includes("ffmpeg") && (detail.includes("bulunamad") || detail.includes("enoent"))) {
+    return "FFmpeg bulunamadı. Uygulamayı yeniden kurun veya Tools klasörünü kontrol edin.";
   }
-  const url = validateYouTubeUrl(job.sourcePath);
-  const outputTemplate = path.join(dir, "youtube.%(ext)s");
+  if (detail.includes("ffprobe") && (detail.includes("bulunamad") || detail.includes("enoent"))) {
+    return "FFprobe bulunamadı. Uygulamayı yeniden kurun veya Tools klasörünü kontrol edin.";
+  }
+  if (detail.includes("whisper") && (detail.includes("bulunamad") || detail.includes("enoent"))) {
+    return "Whisper çalıştırıcısı bulunamadı. Uygulamayı yeniden kurun.";
+  }
+  if (detail.includes("model") || detail.includes("ggml-large-v2")) {
+    return "Whisper large-v2 modeli yüklenemedi. Model dosyası eksik, bozuk veya bellek yetersiz olabilir.";
+  }
+  if (detail.includes("matches no streams") || detail.includes("does not contain any stream") || detail.includes("stream map")) {
+    return "Dosyada kullanılabilir bir ses kanalı bulunamadı.";
+  }
+  if (detail.includes("invalid data") || detail.includes("could not find codec") || detail.includes("moov atom not found")) {
+    return "Medya dosyası bozuk veya desteklenmeyen bir biçimde.";
+  }
+  if (detail.includes("unable to download") || detail.includes("http error") || detail.includes("network") || detail.includes("timed out")) {
+    return "YouTube sesi alınamadı. İnternet bağlantınızı ve bağlantıyı kontrol edin.";
+  }
+  if (detail.includes("permission") || detail.includes("eperm") || detail.includes("eacces")) {
+    return "Dosya yazma izni yok. Farklı bir klasör seçin veya uygulamayı yeniden başlatın.";
+  }
+  if (detail.includes("no space") || detail.includes("enospc")) {
+    return "Diskte yeterli boş alan yok.";
+  }
+  if (detail.includes("memory") || detail.includes("bad allocation") || detail.includes("alloc")) {
+    return "Bilgisayar belleği bu işlem için yetersiz kaldı. Daha kısa bir dosya deneyin veya diğer programları kapatın.";
+  }
+  return "Dönüştürme tamamlanamadı. Dosyayı, internet bağlantısını ve uygulama araçlarını kontrol edip yeniden deneyin.";
+}
+
+async function downloadYoutubeAudio(url: string, targetDir: string, jobId?: string, startedAt?: number) {
+  fs.mkdirSync(targetDir, { recursive: true });
+  const existing = fs.readdirSync(targetDir)
+    .filter((name) => /^audio\./i.test(name))
+    .map((name) => path.join(targetDir, name))
+    .find((file) => {
+      try {
+        return fs.statSync(file).size > 1024;
+      } catch {
+        return false;
+      }
+    });
+  if (existing) return existing;
+
+  const ffmpeg = requireTool("ffmpeg", "ffmpeg.exe", "FFmpeg");
+  const outputTemplate = path.join(targetDir, "audio.%(ext)s");
   await runProcess(requireTool("yt-dlp", "yt-dlp.exe", "yt-dlp"), [
     "-f",
     "bestaudio/best",
     "--no-playlist",
     "--newline",
+    "--extract-audio",
+    "--audio-format",
+    "mp3",
+    "--audio-quality",
+    "0",
+    "--ffmpeg-location",
+    path.dirname(ffmpeg),
     "-o",
     outputTemplate,
     url
   ], {
-    jobId: job.id,
+    jobId,
     onLine: (line) => {
+      if (!jobId) return;
       const match = line.match(/(\d{1,3}(?:\.\d+)?)%/);
-      if (match) emitProgress(job.id, Math.min(15, 4 + Number(match[1]) * 0.11), "YouTube sesi indiriliyor");
+      if (match) {
+        const completed = Number(match[1]);
+        emitProgress(jobId, Math.min(18, 4 + completed * 0.14), "YouTube sesi hazırlanıyor", startedAt, stageEta(jobId, "YouTube sesi hazırlanıyor", completed, 100));
+      }
     }
   });
-  const downloaded = fs.readdirSync(dir).find((name) => name.startsWith("youtube."));
-  if (!downloaded) throw new UserVisibleError("YouTube sesi indirilemedi.");
-  return path.join(dir, downloaded);
+  const downloaded = fs.readdirSync(targetDir).find((name) => /^audio\./i.test(name));
+  if (!downloaded) throw new UserVisibleError("YouTube sesi alınamadı. Bağlantıyı ve internet erişimini kontrol edin.");
+  return path.join(targetDir, downloaded);
+}
+
+async function prepareYouTubePreview(url: string, jobId?: string, startedAt?: number): Promise<PreparedAudio> {
+  const validatedUrl = validateYouTubeUrl(url);
+  const dir = path.join(previewDir(), stableId(validatedUrl));
+  const audio = await downloadYoutubeAudio(validatedUrl, dir, jobId, startedAt);
+  return inspectMediaFile(audio);
+}
+
+async function prepareInput(job: JobRecord, dir: string, startedAt?: number) {
+  if (job.sourceType !== "youtube") {
+    if (!job.sourcePath || !fs.existsSync(job.sourcePath)) throw new UserVisibleError("Seçilen medya dosyası bulunamadı.");
+    if (fs.statSync(job.sourcePath).size === 0) throw new UserVisibleError("Seçilen medya dosyası boş.");
+    if (!supportedMediaExtensions.has(path.extname(job.sourcePath).toLowerCase())) throw new UserVisibleError("Bu dosya biçimi desteklenmiyor.");
+    return { input: job.sourcePath, previewPath: job.sourcePath };
+  }
+  if (job.previewPath && fs.existsSync(job.previewPath)) return { input: job.previewPath, previewPath: job.previewPath };
+  const prepared = await prepareYouTubePreview(job.sourcePath, job.id, startedAt);
+  return { input: prepared.path, previewPath: prepared.path };
 }
 
 ipcMain.handle("settings:get", () => sanitizeSettings(readJson<Partial<AppSettings>>(settingsPath(), defaultSettings)));
@@ -451,7 +712,11 @@ ipcMain.handle("settings:reset", () => {
   writeJson(settingsPath(), defaultSettings);
   return defaultSettings;
 });
-ipcMain.handle("history:get", () => readJson<JobRecord[]>(historyPath(), []));
+ipcMain.handle("history:get", () => readJson<JobRecord[]>(historyPath(), []).map((job) => {
+  const extension = path.extname(job.sourcePath || job.name).toLowerCase();
+  const sourceType = job.sourceType === "file" ? ([".mp4", ".mkv", ".webm", ".mov", ".avi", ".wmv"].includes(extension) ? "local-video" : "local-audio") : job.sourceType;
+  return job.status === "İşleniyor" ? { ...job, sourceType, status: "Bekliyor" as const, stage: "Yeniden başlatılmayı bekliyor", progress: 0, remaining: "Bekliyor" } : { ...job, sourceType };
+}));
 ipcMain.handle("history:save", (_event, jobs: JobRecord[]) => {
   writeJson(historyPath(), jobs);
   return true;
@@ -466,18 +731,27 @@ ipcMain.handle("files:choose", async () => {
     ]
   });
   if (result.canceled) return [];
-  return Promise.all(result.filePaths.map(async (file) => {
-    const stat = fs.statSync(file);
-    const seconds = await probeDuration(file);
-    return {
-      path: file,
-      name: path.basename(file),
-      format: path.extname(file).replace(".", "").toUpperCase(),
-      sizeText: formatBytes(stat.size),
-      duration: formatDuration(seconds),
-      durationSeconds: seconds
-    };
-  }));
+  return Promise.all(result.filePaths.map(async (file) => ({
+    ...await inspectMediaFile(file),
+    name: path.basename(file)
+  })));
+});
+
+ipcMain.handle("files:inspect", async (_event, paths: string[]) => {
+  if (!Array.isArray(paths)) return [];
+  const uniquePaths = Array.from(new Set(paths.filter((file) => typeof file === "string" && file.trim())));
+  const inspected = await Promise.allSettled(uniquePaths.map(async (file) => ({
+    ...await inspectMediaFile(file),
+    name: path.basename(file)
+  })));
+  const valid = inspected.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  if (!valid.length && inspected.some((result) => result.status === "rejected")) {
+    const first = inspected.find((result) => result.status === "rejected");
+    const reason = first?.status === "rejected" ? first.reason : undefined;
+    if (reason instanceof UserVisibleError) throw reason;
+    throw new UserVisibleError("Seçilen dosyalar okunamadı veya desteklenmiyor.");
+  }
+  return valid;
 });
 
 ipcMain.handle("youtube:info", async (_event, url: string) => {
@@ -498,11 +772,126 @@ ipcMain.handle("youtube:info", async (_event, url: string) => {
   }
 });
 
+ipcMain.handle("youtube:prepare", async (_event, url: string, jobId?: string) => {
+  try {
+    const prepared = await prepareYouTubePreview(url, typeof jobId === "string" ? jobId : undefined, Date.now());
+    return { ...prepared, name: path.basename(prepared.path) };
+  } catch (error) {
+    if (error instanceof UserVisibleError) throw error;
+    const detail = error instanceof Error ? error.message.toLowerCase() : "";
+    if (detail.includes("network") || detail.includes("unable to download") || detail.includes("download")) {
+      throw new UserVisibleError("YouTube sesi alınamadı. İnternet bağlantınızı ve bağlantıyı kontrol edin.");
+    }
+    throw new UserVisibleError("YouTube sesi hazırlanamadı. Bağlantıyı kontrol edip yeniden deneyin.");
+  }
+});
+
 ipcMain.handle("transcribe:cancel", async (_event, jobId: string) => {
   if (!jobId || typeof jobId !== "string") throw new UserVisibleError("İptal edilecek işlem bulunamadı.");
   await cancelJob(jobId);
   return true;
 });
+
+async function splitAudioIfNeeded(ffmpeg: string, wav: string, totalSeconds: number, dir: string, jobId: string) {
+  const chunkSeconds = 600;
+  if (totalSeconds <= chunkSeconds) return [{ file: wav, offset: 0, duration: totalSeconds }];
+  const chunkDir = path.join(dir, "chunks");
+  fs.mkdirSync(chunkDir, { recursive: true });
+  const pattern = path.join(chunkDir, "chunk_%04d.wav");
+  await runProcess(ffmpeg, [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-i",
+    wav,
+    "-map",
+    "0:a:0",
+    "-f",
+    "segment",
+    "-segment_time",
+    String(chunkSeconds),
+    "-reset_timestamps",
+    "1",
+    "-c",
+    "copy",
+    pattern
+  ], { jobId });
+  const files = fs.readdirSync(chunkDir)
+    .filter((name) => /^chunk_\d+\.wav$/i.test(name))
+    .sort()
+    .map((name) => path.join(chunkDir, name));
+  if (!files.length) return [{ file: wav, offset: 0, duration: totalSeconds }];
+  let offset = 0;
+  const chunks = [];
+  for (const file of files) {
+    const duration = await probeDuration(file);
+    chunks.push({ file, offset, duration: duration > 0 ? duration : Math.min(chunkSeconds, Math.max(0, totalSeconds - offset)) });
+    offset += chunks[chunks.length - 1].duration;
+  }
+  return chunks;
+}
+
+async function transcribeChunks(job: JobRecord, settings: AppSettings, whisper: string, model: string, chunks: { file: string; offset: number; duration: number }[], totalSeconds: number, dir: string, startedAt: number) {
+  const beam = requestedBeam(job.quality);
+  const code = languageCode(job.language);
+  const transcriptParts: string[] = [];
+  let processedSeconds = 0;
+  for (let index = 0; index < chunks.length; index++) {
+    if (cancelledJobs.has(job.id)) throw new CancelledError("İşlem kullanıcı tarafından iptal edildi.");
+    const chunk = chunks[index];
+    const outBase = path.join(dir, `transcript_${String(index).padStart(4, "0")}`);
+    const args = [
+      "-m",
+      model,
+      "-f",
+      chunk.file,
+      "-of",
+      outBase,
+      "-otxt",
+      "-osrt",
+      "-t",
+      Math.max(2, Math.min(8, os.cpus().length - 1)).toString(),
+      "-bs",
+      beam.toString(),
+      "-bo",
+      beam.toString(),
+      "-pp",
+      "--prompt",
+      initialPrompt(job.language, settings.transcriptionProfile),
+      "--carry-initial-prompt"
+    ];
+    args.push("-nth", settings.transcriptionProfile === "Müzik/Vokal" ? "0.85" : "0.75");
+    if (code !== "auto") args.push("-l", code);
+    await runProcess(whisper, args, {
+      jobId: job.id,
+      onLine: (line) => {
+        const percent = line.match(/(?:progress\s*=\s*|\b)(\d{1,3})%/i);
+        if (percent) {
+          emitMediaProgress(job.id, processedSeconds + chunk.duration * (Number(percent[1]) / 100), totalSeconds, 25, 92, `Metne dönüştürülüyor (${index + 1}/${chunks.length})`, startedAt);
+          return;
+        }
+        const current = parseProcessTime(line);
+        if (current > 0) {
+          emitMediaProgress(job.id, processedSeconds + Math.min(chunk.duration || current, current), totalSeconds, 25, 92, `Metne dönüştürülüyor (${index + 1}/${chunks.length})`, startedAt);
+        }
+      }
+    });
+    const srt = `${outBase}.srt`;
+    const txt = `${outBase}.txt`;
+    let chunkTranscript = "";
+    if (fs.existsSync(srt)) chunkTranscript = parseSrt(fs.readFileSync(srt, "utf8"), settings.timestamps, chunk.offset);
+    if (!chunkTranscript && fs.existsSync(txt)) {
+      const raw = fs.readFileSync(txt, "utf8").trim();
+      chunkTranscript = settings.timestamps ? `[${formatTimestamp(chunk.offset)} - ${formatTimestamp(chunk.offset + chunk.duration)}] ${raw}` : raw;
+    }
+    if (chunkTranscript.trim()) transcriptParts.push(chunkTranscript.trim());
+    processedSeconds = Math.min(totalSeconds, processedSeconds + Math.max(0, chunk.duration));
+    emitMediaProgress(job.id, processedSeconds, totalSeconds, 25, 92, `Metne dönüştürülüyor (${index + 1}/${chunks.length})`, startedAt);
+  }
+  return normalizeTranscript(transcriptParts.join("\n"), settings);
+}
 
 ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppSettings) => {
   if (!job?.id) throw new UserVisibleError("Dönüştürme işi geçersiz.");
@@ -512,16 +901,17 @@ ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppS
   try {
     const ffmpeg = requireTool("ffmpeg", "ffmpeg.exe", "FFmpeg");
     const whisper = requireTool("whisper", "whisper-cli.exe", "Whisper çalıştırıcısı");
-    const model = requireModel();
+    const model = await ensureModel(job.id, startedAt);
     emitProgress(job.id, 4, "Dosya hazırlanıyor", startedAt);
-    const input = await prepareInput(job, dir);
+    const preparedInput = await prepareInput(job, dir, startedAt);
+    const input = preparedInput.input;
+    const inputInfo = await inspectMediaFile(input);
+    const inputSeconds = inputInfo.durationSeconds || job.durationSeconds || 0;
     emitProgress(job.id, 16, "Ses hazırlanıyor", startedAt);
     const wav = path.join(dir, "input_16k.wav");
     await runProcess(ffmpeg, [
       "-y",
       "-hide_banner",
-      "-loglevel",
-      "error",
       "-nostdin",
       "-probesize",
       "50M",
@@ -544,52 +934,28 @@ ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppS
       "s16",
       "-af",
       "aresample=async=1:first_pts=0,loudnorm=I=-18:LRA=11:TP=-1.5",
+      "-progress",
+      "pipe:1",
+      "-nostats",
       "-f",
       "wav",
       wav
-    ], { jobId: job.id });
+    ], {
+      jobId: job.id,
+      onLine: (line) => {
+        const current = parseProcessTime(line);
+        if (current > 0) emitMediaProgress(job.id, current, inputSeconds, 16, 24, "Ses hazırlanıyor", startedAt);
+      }
+    });
     requireFile(wav, "Hazırlanan ses dosyası", 44);
     const preparedSeconds = await probeDuration(wav);
     if (preparedSeconds <= 0) throw new UserVisibleError("Ses hazırlanamadı. Dosyada okunabilir bir ses kanalı bulunamadı.");
 
     emitProgress(job.id, 25, "Metne dönüştürülüyor", startedAt);
-    const outBase = path.join(dir, "transcript");
-    const beam = requestedBeam(job.quality);
-    const args = [
-      "-m",
-      model,
-      "-f",
-      wav,
-      "-of",
-      outBase,
-      "-otxt",
-      "-osrt",
-      "-t",
-      Math.max(2, Math.min(8, os.cpus().length - 1)).toString(),
-      "-bs",
-      beam.toString(),
-      "-bo",
-      beam.toString(),
-      "--prompt",
-      initialPrompt(job.language),
-      "--carry-initial-prompt"
-    ];
-    const code = languageCode(job.language);
-    if (code !== "auto") args.push("-l", code);
-    await runProcess(whisper, args, {
-      jobId: job.id,
-      onLine: (line) => {
-        const match = line.match(/(?:progress\s*=\s*|\b)(\d{1,3})%/i);
-        if (match) emitProgress(job.id, 25 + Math.min(100, Number(match[1])) * 0.66, "Metne dönüştürülüyor", startedAt);
-      }
-    });
+    const chunks = await splitAudioIfNeeded(ffmpeg, wav, preparedSeconds, dir, job.id);
+    let transcript = await transcribeChunks(job, settings, whisper, model, chunks, preparedSeconds, dir, startedAt);
 
     emitProgress(job.id, 94, "Çıktı oluşturuluyor", startedAt);
-    const srt = `${outBase}.srt`;
-    const txt = `${outBase}.txt`;
-    let transcript = "";
-    if (fs.existsSync(srt)) transcript = parseSrt(fs.readFileSync(srt, "utf8"), settings.timestamps);
-    if (!transcript && fs.existsSync(txt)) transcript = normalizeTranscript(fs.readFileSync(txt, "utf8"), settings);
     transcript = normalizeTranscript(transcript, settings);
     if (!hasMeaningfulTranscript(transcript)) {
       throw new UserVisibleError("Konuşma algılanamadı veya Whisper boş çıktı üretti. Ses seviyesini ve seçilen dili kontrol edin.");
@@ -597,6 +963,11 @@ ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppS
 
     const completed: JobRecord = {
       ...job,
+      previewPath: preparedInput.previewPath,
+      format: job.sourceType === "youtube" ? inputInfo.format : job.format,
+      sizeText: job.sourceType === "youtube" ? inputInfo.sizeText : job.sizeText,
+      duration: formatDuration(preparedSeconds),
+      durationSeconds: preparedSeconds,
       status: "Tamamlandı",
       progress: 100,
       stage: "Tamamlandı",
@@ -608,7 +979,7 @@ ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppS
     };
     const autoTxt = await exportTxt(completed);
     completed.outputFiles = { ...completed.outputFiles, txt: autoTxt };
-    emitProgress(job.id, 100, "Tamamlandı", startedAt);
+    emitProgress(job.id, 100, "Tamamlandı", startedAt, "Tamamlandı");
     return completed;
   } catch (error) {
     if (error instanceof CancelledError || cancelledJobs.has(job.id)) {
@@ -626,18 +997,12 @@ ipcMain.handle("transcribe:start", async (_event, job: JobRecord, settings: AppS
       };
     }
     if (error instanceof UserVisibleError) throw error;
-    const detail = error instanceof Error ? error.message.toLowerCase() : "";
-    if (detail.includes("matches no streams") || detail.includes("does not contain any stream")) {
-      throw new UserVisibleError("Dosyada kullanılabilir bir ses kanalı bulunamadı.");
-    }
-    if (detail.includes("invalid data") || detail.includes("could not find codec")) {
-      throw new UserVisibleError("Medya dosyası bozuk veya desteklenmeyen bir biçimde.");
-    }
     runtimeLog(`transcribe:error:${job.id}:${error instanceof Error ? error.stack || error.message : String(error)}`);
-    throw new UserVisibleError("Dönüştürme tamamlanamadı. Dosyayı ve uygulama araçlarını kontrol edip yeniden deneyin.");
+    throw new UserVisibleError(mapTranscriptionError(error));
   } finally {
     activeProcesses.delete(job.id);
     cancelledJobs.delete(job.id);
+    etaStates.delete(job.id);
     try {
       fs.rmSync(dir, { recursive: true, force: true });
     } catch (error) {
@@ -650,9 +1015,26 @@ ipcMain.handle("export:file", async (_event, payload: { type: "pdf" | "docx" | "
   if (!payload?.job || payload.job.status !== "Tamamlandı" || !hasMeaningfulTranscript(payload.job.transcript)) {
     throw new UserVisibleError("Dışa aktarmak için tamamlanmış ve geçerli bir transkript gerekli.");
   }
-  if (payload.type === "pdf") return { path: await exportPdf(payload.job) };
-  if (payload.type === "docx") return { path: await exportDocx(payload.job) };
-  return { path: await exportTxt(payload.job) };
+  const extension = payload.type;
+  let targetPath = defaultOutputPath(payload.job, extension);
+  if (process.env.ELECTRON_SMOKE !== "1") {
+    const result = await dialog.showSaveDialog({
+      title: `${extension.toUpperCase()} olarak kaydet`,
+      defaultPath: targetPath,
+      filters: [{ name: extension.toUpperCase(), extensions: [extension] }]
+    });
+    if (result.canceled || !result.filePath) return { path: "" };
+    targetPath = result.filePath;
+  }
+  try {
+    if (payload.type === "pdf") return { path: await exportPdf(payload.job, targetPath) };
+    if (payload.type === "docx") return { path: await exportDocx(payload.job, targetPath) };
+    return { path: await exportTxt(payload.job, targetPath) };
+  } catch (error) {
+    if (error instanceof UserVisibleError) throw error;
+    runtimeLog(`export:${payload.type}:error:${error instanceof Error ? error.stack || error.message : String(error)} target=${targetPath}`);
+    throw new UserVisibleError("Dosya kaydedilemedi. Seçilen klasör izinlerini ve disk alanını kontrol edin.");
+  }
 });
 
 ipcMain.handle("shell:reveal", async (_event, filePath: string) => {
@@ -661,11 +1043,31 @@ ipcMain.handle("shell:reveal", async (_event, filePath: string) => {
   return true;
 });
 
-ipcMain.handle("sound:play", () => true);
+ipcMain.handle("shell:diagnostics", async () => {
+  const dir = app.getPath("logs");
+  fs.mkdirSync(dir, { recursive: true });
+  await shell.openPath(dir);
+  return true;
+});
 
-function outputBase(job: JobRecord, extension: string) {
-  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "");
-  const base = path.join(outputDir(), `${safeName(path.parse(job.name).name)}_${stamp}`);
+function outputStamp() {
+  const now = new Date();
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const time = `${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
+  return `${date}_${time}`;
+}
+
+function defaultOutputPath(job: JobRecord, extension: string) {
+  return path.join(outputDir(), `${safeName(path.parse(job.name).name)}_transkript_${outputStamp()}.${extension}`);
+}
+
+function outputBase(job: JobRecord, extension: string, targetFile?: string) {
+  if (targetFile) {
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    return targetFile;
+  }
+  const stamp = outputStamp();
+  const base = path.join(outputDir(), `${safeName(path.parse(job.name).name)}_transkript_${stamp}`);
   let candidate = `${base}.${extension}`;
   let suffix = 2;
   while (fs.existsSync(candidate)) candidate = `${base}_${suffix++}.${extension}`;
@@ -679,13 +1081,20 @@ function assertOutputFile(file: string, label: string) {
   return file;
 }
 
-async function exportTxt(job: JobRecord) {
-  const file = outputBase(job, "txt");
-  fs.writeFileSync(file, renderPlainTranscript(job), "utf8");
+function printableText(value: string) {
+  return (value || "")
+    .normalize("NFC")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\u00a0/g, " ");
+}
+
+async function exportTxt(job: JobRecord, targetFile?: string) {
+  const file = outputBase(job, "txt", targetFile);
+  fs.writeFileSync(file, `\uFEFF${printableText(renderPlainTranscript(job)).replace(/(?<!\r)\n/g, "\r\n")}`, "utf8");
   return assertOutputFile(file, "TXT");
 }
 
-async function exportDocx(job: JobRecord) {
+async function exportDocx(job: JobRecord, targetFile?: string) {
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableCell, TableRow, WidthType } = await import("docx");
   const rows = [
     ["Dosya adı", job.name],
@@ -699,7 +1108,7 @@ async function exportDocx(job: JobRecord) {
       new TableCell({ children: [new Paragraph(right)] })
     ]
   }));
-  const transcriptParagraphs = (job.transcript || "Metin bulunamadı.")
+  const transcriptParagraphs = printableText(job.transcript || "Metin bulunamadı.")
     .split(/\r?\n/)
     .map((line) => new Paragraph({ children: [new TextRun(line)] }));
   const doc = new Document({
@@ -716,33 +1125,39 @@ async function exportDocx(job: JobRecord) {
     }]
   });
   const buffer = await Packer.toBuffer(doc);
-  const file = outputBase(job, "docx");
+  const file = outputBase(job, "docx", targetFile);
   fs.writeFileSync(file, buffer);
   return assertOutputFile(file, "DOCX");
 }
 
-async function exportPdf(job: JobRecord) {
-  const PDFDocument = (await import("pdfkit")).default;
-  const file = outputBase(job, "pdf");
+async function exportPdf(job: JobRecord, targetFile?: string) {
+  // Standalone dağıtım fontkit bağımlılıklarını kendi içinde taşır; paketli ASAR'da
+  // electron-builder'ın eksik transitive modül toplamasına bağlı kalmaz.
+  const PDFDocument = require("pdfkit/js/pdfkit.standalone.js") as typeof import("pdfkit");
+  const file = outputBase(job, "pdf", targetFile);
   const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
   const stream = fs.createWriteStream(file);
+  const finished = new Promise<void>((resolve, reject) => {
+    stream.on("finish", resolve);
+    stream.on("error", reject);
+  });
   const font = ["C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\tahoma.ttf"].find((candidate) => fs.existsSync(candidate));
   if (!font) throw new UserVisibleError("PDF için Türkçe karakter destekli Windows yazı tipi bulunamadı.");
-  doc.registerFont("AppText", font);
+  doc.registerFont("AppText", fs.readFileSync(font));
   doc.font("AppText");
   doc.pipe(stream);
   doc.fontSize(20).fillColor("#111827").text("My Sesi Metne Dönüştürme");
   doc.moveDown(0.2).fontSize(15).fillColor("#4f46e5").text("Transkript Raporu");
   doc.moveDown();
   doc.fontSize(10).fillColor("#334155");
-  doc.text(`Dosya adı: ${job.name}`);
+  doc.text(`Dosya adı: ${printableText(job.name)}`);
   doc.text(`Tarih: ${new Date().toLocaleString("tr-TR")}`);
   doc.text(`Süre: ${job.duration}`);
   doc.text(`Dil: ${job.language}`);
   doc.text(`Kalite: ${job.quality}`);
   doc.moveDown();
   doc.fontSize(11).fillColor("#111827");
-  for (const line of (job.transcript || "Metin bulunamadı.").split(/\r?\n/)) {
+  for (const line of printableText(job.transcript || "Metin bulunamadı.").split(/\r?\n/)) {
     const match = line.match(/^\[(.+?)\]\s*(.*)$/);
     const printable = match ? `[${match[1]}] ${match[2] || ""}` : line;
     doc.fillColor(match ? "#1f3fbf" : "#111827").text(printable || " ", {
@@ -756,10 +1171,7 @@ async function exportPdf(job: JobRecord) {
   doc.moveDown();
   doc.fontSize(9).fillColor("#64748b").text("© 2026 Mustafa Yılmaz. Tüm hakları saklıdır.");
   doc.end();
-  await new Promise<void>((resolve, reject) => {
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-  });
+  await finished;
   return assertOutputFile(file, "PDF");
 }
 

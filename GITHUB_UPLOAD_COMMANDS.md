@@ -1,26 +1,27 @@
-# GitHub yükleme kontrol listesi
+# GitHub Yükleme Kontrol Listesi
 
-Remote zaten tanımlıdır:
+Remote:
 
 ```text
-origin  https://github.com/vildancam/My-Sesi-Metne-Donusturme.git
+origin  https://github.com/mylmaz/My-Sesi-Metne-Donusturme.git
 ```
 
-Önce büyük veya gizli dosya olmadığını doğrulayın:
+Kontrol:
 
 ```powershell
 git status --short
 git diff --check
-git ls-files | Select-String -Pattern "node_modules|dist-electron-package|Tools/models|\.exe$|\.bin$|\.env$|\.pfx$"
+npm run typecheck
+npm run build
 ```
 
-Ardından değişiklikleri inceleyerek ekleyin:
+Commit ve push:
 
 ```powershell
 git add .
 git status --short
-git commit -m "fix: improve transcription workflow, ui layout, cancellation and packaging"
+git commit -m "fix: complete real transcription workflow and installer"
 git push origin main
 ```
 
-Whisper modeli ve installer normal Git commit'ine eklenmez. Tercihen GitHub Releases kullanın; LFS kullanılacaksa önce `git lfs install` çalıştırın. Force push yapmayın.
+`Tools/**/*.exe`, `Tools/models/*.bin`, `dist-electron-package`, `dist` ve setup çıktıları Git commit'ine eklenmez. `dist-electron-package/My-Sesi-Metne-Donusturme-Setup-x64.exe` dosyasını GitHub Release eki olarak yükleyin.

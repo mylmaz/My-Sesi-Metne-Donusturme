@@ -1,122 +1,123 @@
 # My Sesi Metne Dönüştürme
 
-Windows x64 için yerel ses, video ve YouTube transkripsiyon uygulaması. Yerel dosyalar cihazdan dışarı gönderilmez ve ücretli API kullanılmaz. İnternet yalnızca YouTube içeriğine erişmek için gerekir.
+Windows için tek tıkla kurulabilen masaüstü ses/video transkripsiyon uygulaması. Yerel medya dosyalarını ve YouTube videolarının sesini Whisper `large-v2` modeliyle metne dönüştürür; sonucu zaman damgalı şekilde gösterir ve TXT, DOCX, PDF olarak dışa aktarır.
 
-- Geliştirici: Mustafa Yılmaz
-- Sürüm: 1.0.0
-- Lisans: MIT
+## Kullanıcı İçin Kurulum
 
-## Özellikler
+1. GitHub Release sayfasından `My-Sesi-Metne-Donusturme-Setup-v1.0.0.zip` dosyasını indirin.
+2. ZIP'i çıkartıp içindeki kurulum EXE'sine çift tıklayın.
+3. Kurulum sonunda masaüstü kısayolu ve Başlat menüsü kısayolu oluşur.
+4. Uygulamayı açın; terminal, Python veya npm komutu gerekmez.
 
-- MP3, WAV, M4A, MP4, WEBM, MPEG, MPGA, MOV, AVI, MKV, FLAC, AAC, OGG, OPUS, WMA ve WMV desteği
-- YouTube video bilgisi alma ve sesi indirerek dönüştürme
-- Whisper Large-v2 ile tamamen yerel transkripsiyon
-- Otomatik, Türkçe, Kürtçe ve İngilizce dil seçenekleri
-- Hızlı (Beam 4), Dengeli (Beam 6) ve Yüksek Doğruluk (Beam 8) modları
-- Gerçek işlem iptali ve Windows child-process ağacı sonlandırma
-- UTF-8 TXT, Türkçe karakter uyumlu PDF ve DOCX çıktısı
-- Açık renkli, cam efektli Electron + React arayüz
+Kurulum paketi FFmpeg, FFprobe, yt-dlp ve whisper-cli içerir. Standart kurulum `large-v2` modelini ilk dönüşümde kaldığı yerden devam edebilir biçimde indirir ve SHA-256 ile doğrular. İnternetsiz kurulum için modelin de içinde bulunduğu `Full-Offline` ZIP paketini kullanın.
 
-## Aktif proje yapısı
+## Yerel Ses veya Video Dönüştürme
+
+1. `Dosya Seç` düğmesine basın veya dosyayı ana ekrana sürükleyip bırakın.
+2. Gerekirse kalite ve dil ayarını seçin. Varsayılan dil Türkçe, varsayılan model Whisper `large-v2` olur.
+3. `Dönüştür` düğmesine basın.
+4. İşlem bitince sonuç ekranı açılır. Her segment şu biçimde görünür:
 
 ```text
-src/main       Electron ana süreç, FFmpeg/Whisper/yt-dlp ve export işlemleri
-src/preload    İzole renderer için güvenli IPC köprüsü
-src/renderer   React + TypeScript kullanıcı arayüzü
-resources      Electron ve NSIS uygulama ikonu
-Tools          Harici çalışma zamanı araçları ve yerel model
-scripts        Electron doğrulama ve eski sürüme ait yardımcı testler
+[00:00 - 00:12] Merhaba bugün sizlere...
+[00:12 - 00:28] Bu videoda...
 ```
 
-`src/MySesiMetneDonusturme` ve kökteki eski installer dosyaları önceki WPF sürümüne aittir. Aktif uygulama Electron sürümüdür; geçmiş sürüm doğrulaması yapılmadan bu dosyalar silinmemelidir.
+Desteklenen yaygın biçimler: MP3, WAV, M4A, MP4, WEBM, MOV, AVI, MKV, FLAC, AAC, OGG, OPUS, WMA, WMV.
 
-## Gereksinimler
+## YouTube Dönüştürme
+
+1. YouTube bağlantısını ana ekrandaki kutuya yapıştırın.
+2. `Bilgi Getir` ile başlık, kanal, süre ve küçük resmi görüntüleyin.
+3. `Dönüştür` düğmesine basın; gerekli ses bu aşamada indirilir.
+4. Uygulama yt-dlp ile gerçek sesi indirir, aynı ses dosyasını oynatıcıda çalar ve Whisper `large-v2` ile dönüştürür.
+
+Yanlış bağlantı, internet kesintisi veya indirilemeyen video durumunda kullanıcıya anlaşılır hata mesajı gösterilir.
+
+## Ses Oynatıcı
+
+Yerel dosya ve YouTube sesi aynı oynatıcıyı kullanır. Play/pause, 10 saniye geri, 10 saniye ileri, ses seviyesi ve mute düğmesi gerçek ses üzerinde çalışır. Süre dakika:saniye biçiminde gösterilir.
+
+## Çıktı Alma
+
+Sonuç ekranındaki düğmelerle çıktı alınabilir:
+
+- `TXT`: Windows Not Defteri uyumlu UTF-8 BOM ve CRLF metin dosyası
+- `Word`: DOCX raporu
+- `PDF`: Türkçe karakter destekli PDF raporu
+
+Kaydetme sırasında dosya konumu kullanıcıya sorulur. Varsayılan dosya adı:
+
+```text
+kaynak_adi_transkript_YYYY-MM-DD_HH-mm
+```
+
+## Hata Mesajları ve Çözümler
+
+- `Whisper large-v2 modeli yüklenemedi`: Model eksik, bozuk veya bellek yetersiz olabilir. Uygulamayı yeniden kurun.
+- `FFmpeg bulunamadı`: Kurulum bozuk olabilir. Setup dosyasını yeniden çalıştırın.
+- `YouTube sesi alınamadı`: İnternet bağlantısını ve video bağlantısını kontrol edin.
+- `Dosyada kullanılabilir bir ses kanalı bulunamadı`: Video/ses dosyasında okunabilir ses yoktur.
+- `Medya dosyası bozuk`: Dosyayı farklı bir oynatıcıda deneyin veya başka bir kopyasını kullanın.
+- `Dosya yazma izni yok`: Farklı bir klasöre kaydedin.
+- `Diskte yeterli boş alan yok`: Diskte yer açın.
+- `Bilgisayar belleği yetersiz kaldı`: Diğer programları kapatın veya daha kısa bir dosya deneyin.
+
+Yardım ekranındaki `Tanılama klasörünü aç` düğmesi teknik kayıtları gösterir. Sesler ve metinler herhangi bir sunucuya gönderilmez. Geçmiş ve ayarlar Windows kullanıcı veri klasöründe, YouTube sesleri ise aynı klasörün yönetilen veri alanında saklanır. Yerel dosya dönüştürme tamamen çevrimdışıdır; yalnızca YouTube işlemleri internet gerektirir.
+
+## Geçmiş, Düzenleme ve Zaman Akışı
+
+Tamamlanan kayıtlar Geçmiş ekranında kalır. Sonucu açınca metni doğrudan düzenleyebilirsiniz; değişiklikler otomatik kaydedilir ve dışa aktarımda son düzenlenmiş metin kullanılır. Zaman Akışı bölümünde arama yapabilir, bir zaman koduna tıklayıp sesi o noktadan başlatabilirsiniz. Orijinal metne dönüş yalnızca kullanıcı onayıyla yapılır.
+
+## Geliştirici Kurulumu
+
+Gereksinimler:
 
 - Windows 10/11 x64
 - Node.js 20 veya daha yeni LTS
 - npm
-- Paketleme için yeterli boş disk alanı (en az 5 GB önerilir)
-
-## Çalışma zamanı dosyaları
-
-Aşağıdaki dosyalar geliştirme ortamında bulunmalıdır:
-
-```text
-Tools/ffmpeg/ffmpeg.exe
-Tools/ffmpeg/ffprobe.exe
-Tools/yt-dlp/yt-dlp.exe
-Tools/whisper/whisper-cli.exe
-Tools/whisper/whisper.dll
-Tools/whisper/ggml.dll
-Tools/whisper/ggml-base.dll
-Tools/whisper/ggml-cpu.dll
-Tools/models/ggml-large-v2-q5_k.bin
-```
-
-Binary ve model dosyaları boyutları nedeniyle normal Git commit'ine eklenmez. Bunları GitHub Release eki olarak yayımlamak önerilir. Git LFS kullanılacaksa önce `git lfs install` çalıştırılmalıdır.
-
-## Kurulum ve geliştirme
+- En az 8 GB boş disk alanı
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-`npm run dev`, Vite sunucusunu `127.0.0.1:5173` üzerinde açar ve Electron uygulamasını başlatır.
-
-## Kontrol ve build
+## Kontrol, Test ve Build
 
 ```powershell
 npm run typecheck
 npm run build
-```
-
-Production build çıktıları `dist` ve `dist-electron` klasörlerinde oluşur.
-
-Mevcut kısa test medyası varsa gerçek Electron transkripsiyon, TXT/PDF/DOCX export ve süreç iptali testi:
-
-```powershell
-$env:ELECTRON_TEST_MEDIA = "C:\medya\kisa-test.wav"
 npm run test:electron
-```
-
-## Windows installer
-
-```powershell
 npm run dist
 ```
 
-Çıktı:
+`npm run dist` çıktısı:
 
 ```text
-dist-electron-package/My-Sesi-Metne-Donusturme-Setup-x64.exe
+release/My-Sesi-Metne-Donusturme-Setup-v1.0.0.exe
 ```
 
-Installer FFmpeg, FFprobe, yt-dlp, gerekli Whisper DLL'leri ve `ggml-large-v2-q5_k.bin` modelini içerir. Paket büyük olduğu için installer normal Git commit'ine eklenmemeli, GitHub Releases üzerinden yayımlanmalıdır.
+Aktif proje yapısı:
 
-## Uygulama verileri
+```text
+src/main       Electron ana süreç, FFmpeg/Whisper/yt-dlp/export işlemleri
+src/preload    Güvenli IPC köprüsü
+src/renderer   React + TypeScript arayüz
+resources      Uygulama ikonu
+Tools          FFmpeg, yt-dlp, whisper-cli ve ggml-large-v2.bin
+scripts        Electron smoke/build yardımcı scriptleri
+```
 
-- Ayarlar ve geçmiş: Electron `userData/data` dizini
-- Geçici çalışma dosyaları: `userData/data/work`; işlem bitince veya iptal edilince temizlenir
-- Transkript çıktıları: `%USERPROFILE%\Documents\My Sesi Metne Donusturme Ciktilar`
+## GitHub Release Notu
 
-## GitHub'a güvenli yükleme
+Model, FFmpeg ve installer çıktıları büyük olduğu için Git commit'ine eklenmez. Release oluştururken `dist-electron-package/My-Sesi-Metne-Donusturme-Setup-x64.exe` dosyasını GitHub Release eki olarak yükleyin.
 
-Push öncesinde:
+Push öncesi önerilen kontrol:
 
 ```powershell
 git status --short
 git diff --check
-git ls-files | Select-String -Pattern "node_modules|dist-electron-package|Tools/models|\.exe$|\.bin$"
+npm run typecheck
+npm run build
 ```
-
-Beklenmeyen büyük dosya görünmüyorsa:
-
-```powershell
-git add .
-git status --short
-git commit -m "fix: improve transcription workflow, ui layout, cancellation and packaging"
-git push origin main
-```
-
-Force push kullanılmamalıdır. Token, `.env`, sertifika ve özel anahtarlar repoya eklenmemelidir.

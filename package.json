@@ -1,7 +1,7 @@
 {
   "name": "my-sesi-metne-donusturme",
   "version": "1.0.0",
-  "description": "My Sesi Metne Donusturme - yerel ses/video/YouTube transkript uygulaması",
+  "description": "My Sesi Metne Dönüştürme - yerel ses, video ve YouTube transkript uygulaması",
   "author": "Mustafa Yılmaz",
   "copyright": "© 2026 Mustafa Yılmaz. Tüm hakları saklıdır.",
   "license": "MIT",
@@ -14,7 +14,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "test:electron": "npm run build && set ELECTRON_RUN_AS_NODE=&& electron scripts/electron-smoke.cjs",
-    "dist": "npm run build && electron-builder --win nsis --x64 --publish never"
+    "dist": "npm run build && electron-builder --win dir --x64 --publish never && powershell -ExecutionPolicy Bypass -File scripts/fix-packaged-icon.ps1 && electron-builder --win nsis --x64 --publish never --prepackaged dist-electron-package/win-unpacked"
   },
   "dependencies": {
     "docx": "^9.1.1",
@@ -37,12 +37,12 @@
   },
   "build": {
     "appId": "com.mustafayilmaz.mysesimetnedonusturme",
-    "productName": "My Sesi Metne Donusturme",
-    "artifactName": "My-Sesi-Metne-Donusturme-Setup-x64.${ext}",
+    "productName": "My Sesi Metne Dönüştürme",
+    "artifactName": "My-Sesi-Metne-Donusturme-Setup-v${version}.${ext}",
     "directories": {
       "output": "dist-electron-package"
     },
-    "compression": "maximum",
+    "compression": "normal",
     "asar": true,
     "files": [
       "dist/**/*",
@@ -74,10 +74,6 @@
         ]
       },
       {
-        "from": "Tools/models/ggml-large-v2-q5_k.bin",
-        "to": "Tools/models/ggml-large-v2-q5_k.bin"
-      },
-      {
         "from": "resources",
         "to": "resources"
       }
@@ -93,19 +89,21 @@
       ],
       "icon": "resources/app-icon.ico",
       "executableName": "MySesiMetneDonusturme",
-      "signAndEditExecutable": true
+      "signAndEditExecutable": false
     },
     "nsis": {
+      "installerLanguages": ["tr_TR"],
+      "language": "1055",
       "oneClick": false,
       "perMachine": false,
       "include": "installer/electron-cleanup.nsh",
-      "useZip": true,
+      "useZip": false,
       "differentialPackage": false,
       "packElevateHelper": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": true,
+      "deleteAppDataOnUninstall": false,
       "shortcutName": "My Sesi Metne Donusturme",
       "uninstallDisplayName": "My Sesi Metne Donusturme"
     }

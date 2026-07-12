@@ -1,8 +1,8 @@
-# Yerel Araclar
+# Yerel Araçlar
 
-Bu klasor uygulamanin harici komut satiri araclarini buldugu yerdir.
+Bu klasör Electron uygulamasının çalışma zamanı için gereken yerel dosyaları tutar. `npm run dist` çalıştığında gerekli dosyalar Windows `setup.exe` paketine eklenir.
 
-Beklenen yapi:
+Beklenen yapı:
 
 ```text
 Tools/
@@ -11,14 +11,14 @@ Tools/
     ffprobe.exe
   whisper/
     whisper-cli.exe
+    whisper.dll
+    ggml.dll
+    ggml-base.dll
+    ggml-cpu.dll
   models/
-    ggml-base.bin
-    ggml-small.bin
-    ggml-medium.bin
+    ggml-large-v2.bin
   yt-dlp/
     yt-dlp.exe
 ```
 
-Uygulama reklamsiz, ucretsiz ve kotasiz calismak uzere yerel araclari kullanir.
-Bu dosyalar lisanslari geregi repoya eklenmez. Kurulum paketi hazirlanirken
-bu klasorlerin icine yerlestirilebilir.
+Kullanıcı bu klasörü ayrıca yönetmez. Model ve `.exe` dosyaları büyük olduğu için Git geçmişine eklenmez; release paketi içinde dağıtılır.

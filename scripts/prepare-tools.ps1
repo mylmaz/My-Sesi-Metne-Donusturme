@@ -1,5 +1,5 @@
 param(
-    [switch]$IncludeVeryHighModel
+    [switch]$IncludeLargeV2Model
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,10 +74,10 @@ if (!(Test-Path (Join-Path $tools "whisper\whisper-cli.exe")) -and !(Test-Path (
     }
 }
 
-Download-IfMissing "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin" (Join-Path $tools "models\ggml-small.bin")
-
-if ($IncludeVeryHighModel) {
-    Download-IfMissing "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin" (Join-Path $tools "models\ggml-medium.bin")
+if ($IncludeLargeV2Model) {
+    Download-IfMissing "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2.bin" (Join-Path $tools "models\ggml-large-v2.bin")
+} else {
+    Write-Host "Large-v2 modelini indirmek icin: .\scripts\prepare-tools.ps1 -IncludeLargeV2Model"
 }
 
 Write-Host "Araçlar hazır: $tools"

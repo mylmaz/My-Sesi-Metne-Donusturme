@@ -3,6 +3,8 @@ export type Language = "Otomatik" | "Türkçe" | "Kürtçe" | "İngilizce";
 export type JobStatus = "Bekliyor" | "İşleniyor" | "Tamamlandı" | "Hata" | "İptal Edildi" | "Durduruldu";
 
 export interface AppSettings {
+  parallelJobs: 1 | 2 | 3;
+  transcriptionProfile: "Konuşma" | "Müzik/Vokal";
   defaultQuality: Quality;
   defaultLanguage: Language;
   timestamps: boolean;
@@ -25,6 +27,10 @@ export interface YouTubeInfo {
   url: string;
   title: string;
   duration: string;
+  durationSeconds?: number;
+  previewPath?: string;
+  format?: string;
+  sizeText?: string;
   channel: string;
   thumbnail: string;
 }
@@ -32,7 +38,8 @@ export interface YouTubeInfo {
 export interface JobRecord {
   id: string;
   sourcePath: string;
-  sourceType: "file" | "youtube";
+  sourceType: "youtube" | "local-audio" | "local-video" | "file";
+  previewPath?: string;
   name: string;
   format: string;
   sizeText: string;
@@ -66,17 +73,19 @@ export interface ExportPayload {
 
 export interface DesktopApi {
   chooseMediaFiles(): Promise<MediaFile[]>;
+  inspectMediaFiles(paths: string[]): Promise<MediaFile[]>;
   getSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<AppSettings>;
   resetSettings(): Promise<AppSettings>;
   getHistory(): Promise<JobRecord[]>;
   saveHistory(jobs: JobRecord[]): Promise<boolean>;
   getYouTubeInfo(url: string): Promise<YouTubeInfo>;
+  prepareYouTubeAudio(url: string, jobId?: string): Promise<MediaFile>;
   transcribe(job: JobRecord, settings: AppSettings): Promise<JobRecord>;
   cancelTranscription(jobId: string): Promise<boolean>;
   exportFile(payload: ExportPayload): Promise<{ path: string }>;
   revealPath(path: string): Promise<boolean>;
-  playSound(name: string): Promise<boolean>;
+  openDiagnostics(): Promise<boolean>;
   onProgress(callback: (payload: { id: string; progress: number; stage: string; remaining: string }) => void): () => void;
 }
 
