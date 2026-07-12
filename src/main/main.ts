@@ -443,9 +443,9 @@ function languageCode(language: Language) {
 }
 
 function requestedBeam(quality: Quality) {
-  if (quality === "Hızlı") return 4;
-  if (quality === "Dengeli") return 6;
-  return 8;
+  if (quality === "Hızlı") return 2;
+  if (quality === "Dengeli") return 4;
+  return 6;
 }
 
 function initialPrompt(language: Language, profile: AppSettings["transcriptionProfile"]) {
@@ -842,7 +842,7 @@ async function transcribeChunks(job: JobRecord, settings: AppSettings, whisper: 
       initialPrompt(job.language, settings.transcriptionProfile),
       "--carry-initial-prompt"
     ];
-    args.push("-nth", settings.transcriptionProfile === "Müzik/Vokal" ? "0.80" : "0.60");
+    args.push("-nth", settings.transcriptionProfile === "Müzik/Vokal" ? "0.85" : "0.75");
     if (code !== "auto") args.push("-l", code);
     await runProcess(whisper, args, {
       jobId: job.id,
@@ -1111,7 +1111,9 @@ async function exportDocx(job: JobRecord, targetFile?: string) {
 }
 
 async function exportPdf(job: JobRecord, targetFile?: string) {
-  const PDFDocument = (await import("pdfkit")).default;
+  // Standalone dağıtım fontkit bağımlılıklarını kendi içinde taşır; paketli ASAR'da
+  // electron-builder'ın eksik transitive modül toplamasına bağlı kalmaz.
+  const PDFDocument = require("pdfkit/js/pdfkit.standalone.js") as typeof import("pdfkit");
   const file = outputBase(job, "pdf", targetFile);
   const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
   const stream = fs.createWriteStream(file);
@@ -1121,7 +1123,7 @@ async function exportPdf(job: JobRecord, targetFile?: string) {
   });
   const font = ["C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\tahoma.ttf"].find((candidate) => fs.existsSync(candidate));
   if (!font) throw new UserVisibleError("PDF için Türkçe karakter destekli Windows yazı tipi bulunamadı.");
-  doc.registerFont("AppText", font);
+  doc.registerFont("AppText", fs.readFileSync(font));
   doc.font("AppText");
   doc.pipe(stream);
   doc.fontSize(20).fillColor("#111827").text("My Sesi Metne Dönüştürme");

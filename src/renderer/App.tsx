@@ -53,9 +53,9 @@ type IconName =
   | "scale";
 
 const qualities: { label: Quality; detail: string; icon: IconName }[] = [
-  { label: "Hızlı", detail: "Beam 4", icon: "bolt" },
-  { label: "Dengeli", detail: "Beam 6", icon: "scale" },
-  { label: "Yüksek Doğruluk", detail: "Beam 8", icon: "target" }
+  { label: "Hızlı", detail: "Beam 2", icon: "bolt" },
+  { label: "Dengeli", detail: "Beam 4", icon: "scale" },
+  { label: "Yüksek Doğruluk", detail: "Beam 6", icon: "target" }
 ];
 
 const languages: { label: Language; icon?: string; symbol?: IconName }[] = [
@@ -692,6 +692,7 @@ function HelpPage() {
 
 function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; compact?: boolean; seekRequest?: { seconds: number; nonce: number } }) {
   const audio = useRef<HTMLAudioElement>(null);
+  const pendingSeek = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -722,8 +723,16 @@ function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; c
 
   useEffect(() => {
     if (!audio.current || !seekRequest) return;
-    audio.current.currentTime = Math.max(0, Math.min(seekRequest.seconds, total || seekRequest.seconds));
-    void audio.current.play().catch(() => setPlaying(false));
+    const target = Math.max(0, Math.min(seekRequest.seconds, total || seekRequest.seconds));
+    pendingSeek.current = target;
+    if (audio.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      audio.current.currentTime = target;
+      setCurrent(target);
+      pendingSeek.current = null;
+      void audio.current.play().catch(() => setPlaying(false));
+    } else {
+      audio.current.load();
+    }
   }, [seekRequest?.nonce]);
 
   return (
@@ -734,7 +743,16 @@ function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; c
         preload="metadata"
         onLoadedMetadata={() => {
           setDuration(audio.current?.duration || job?.durationSeconds || 0);
-          if (audio.current) audio.current.volume = muted ? 0 : volume;
+          if (audio.current) {
+            audio.current.volume = muted ? 0 : volume;
+            if (pendingSeek.current !== null) {
+              const target = Math.min(pendingSeek.current, audio.current.duration || pendingSeek.current);
+              audio.current.currentTime = target;
+              setCurrent(target);
+              pendingSeek.current = null;
+              void audio.current.play().catch(() => setPlaying(false));
+            }
+          }
         }}
         onDurationChange={() => setDuration(audio.current?.duration || job?.durationSeconds || 0)}
         onTimeUpdate={() => setCurrent(audio.current?.currentTime || 0)}
