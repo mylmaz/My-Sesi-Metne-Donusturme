@@ -162,12 +162,16 @@ async function run() {
     const audio = new Audio('app-media://local/media?path=' + encodeURIComponent(${JSON.stringify(mediaPath)}));
     audio.volume = 0;
     await audio.play();
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    const result = { currentTime: audio.currentTime, duration: audio.duration };
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const target = Math.max(1, audio.duration * 0.6);
+    audio.currentTime = target;
+    await Promise.race([new Promise((resolve) => audio.addEventListener('seeked', resolve, { once: true })), new Promise((_, reject) => setTimeout(() => reject(new Error('seek timeout')), 4000))]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const result = { currentTime: audio.currentTime, duration: audio.duration, target };
     audio.pause();
     return result;
   })()`);
-  if (!(playback.currentTime > 0) || !(playback.duration > 0)) throw new Error(`Gerçek ses oynatma doğrulaması başarısız: ${JSON.stringify(playback)}`);
+  if (!(playback.currentTime > 0) || !(playback.duration > 0) || Math.abs(playback.currentTime - playback.target) > 1.5) throw new Error(`Gerçek ses oynatma/seek doğrulaması başarısız: ${JSON.stringify(playback)}`);
 
   const exported = [];
   for (const type of ["txt", "docx", "pdf"]) {

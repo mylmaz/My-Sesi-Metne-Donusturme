@@ -1,10 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, shell } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { pathToFileURL } from "url";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 
@@ -137,7 +136,28 @@ app.whenReady().then(() => {
     try {
       const mediaPath = new URL(request.url).searchParams.get("path") || "";
       if (!path.isAbsolute(mediaPath) || !fs.existsSync(mediaPath) || !fs.statSync(mediaPath).isFile()) return new Response("Medya bulunamadı", { status: 404 });
-      return net.fetch(pathToFileURL(mediaPath).toString(), { headers: request.headers });
+      const size = fs.statSync(mediaPath).size;
+      const range = request.headers.get("range");
+      const mime: Record<string, string> = { ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".aac": "audio/aac", ".flac": "audio/flac", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".wma": "audio/x-ms-wma", ".mp4": "video/mp4", ".webm": "video/webm", ".mkv": "video/x-matroska", ".mov": "video/quicktime", ".avi": "video/x-msvideo" };
+      const headers = new Headers({ "Accept-Ranges": "bytes", "Content-Type": mime[path.extname(mediaPath).toLowerCase()] || "application/octet-stream" });
+      if (request.method === "HEAD") {
+        headers.set("Content-Length", String(size));
+        return new Response(null, { status: 200, headers });
+      }
+      let start = 0;
+      let end = size - 1;
+      if (range) {
+        const match = range.match(/^bytes=(\d*)-(\d*)$/);
+        if (!match) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+        if (match[1]) start = Number(match[1]);
+        if (match[2]) end = Math.min(Number(match[2]), size - 1);
+        if (!match[1] && match[2]) start = Math.max(0, size - Number(match[2]));
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+      }
+      headers.set("Content-Length", String(end - start + 1));
+      if (range) headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+      const body = Readable.toWeb(fs.createReadStream(mediaPath, { start, end })) as ReadableStream<Uint8Array>;
+      return new Response(body, { status: range ? 206 : 200, headers });
     } catch (error) {
       runtimeLog(`media:protocol:error:${String(error)}`);
       return new Response("Medya açılamadı", { status: 400 });
@@ -443,9 +463,9 @@ function languageCode(language: Language) {
 }
 
 function requestedBeam(quality: Quality) {
-  if (quality === "Hızlı") return 2;
-  if (quality === "Dengeli") return 4;
-  return 6;
+  if (quality === "Hızlı") return 4;
+  if (quality === "Dengeli") return 6;
+  return 8;
 }
 
 function initialPrompt(language: Language, profile: AppSettings["transcriptionProfile"]) {

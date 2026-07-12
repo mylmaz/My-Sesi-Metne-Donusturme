@@ -53,9 +53,9 @@ type IconName =
   | "scale";
 
 const qualities: { label: Quality; detail: string; icon: IconName }[] = [
-  { label: "Hızlı", detail: "Beam 2", icon: "bolt" },
-  { label: "Dengeli", detail: "Beam 4", icon: "scale" },
-  { label: "Yüksek Doğruluk", detail: "Beam 6", icon: "target" }
+  { label: "Hızlı", detail: "Beam 4", icon: "bolt" },
+  { label: "Dengeli", detail: "Beam 6", icon: "scale" },
+  { label: "Yüksek Doğruluk", detail: "Beam 8", icon: "target" }
 ];
 
 const languages: { label: Language; icon?: string; symbol?: IconName }[] = [
