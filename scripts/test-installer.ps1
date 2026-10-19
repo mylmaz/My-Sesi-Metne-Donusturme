@@ -1,8 +1,10 @@
 ﻿param(
   [string]$MediaPath,
+  [string]$SmokeMediaPath,
   [string]$OriginalInstallPath = (Join-Path $env:ProgramFiles 'MySesiMetneDonusturme'),
   [string]$ReuseVerifiedBuildReport,
-  [switch]$SkipInstalledSourceSmoke
+  [switch]$SkipInstalledSourceSmoke,
+  [switch]$TestUpgrade
 )
 
 # A separate installer identity is essential: a production NSIS upgrade would
@@ -34,6 +36,8 @@ $report = [ordered]@{
 }
 $installed = $false
 $pendingError = $null
+$upgradeDataRoot = $null
+$upgradeMarker = $null
 $originalEnvironment = @{}
 
 function Save-Report {
@@ -62,16 +66,17 @@ function ConvertTo-NativeArgument([string]$Value) {
   return '"' + $escaped + '"'
 }
 
-function Start-TestProcess([string]$Executable, [string[]]$Arguments, [string]$LogName, [int]$TimeoutSeconds = 1800, [switch]$Background) {
+function Start-TestProcess([string]$Executable, [string[]]$Arguments, [string]$LogName, [int]$TimeoutSeconds = 1800, [switch]$Background, [switch]$Visible) {
   $start = New-Object Diagnostics.ProcessStartInfo
   $start.FileName = $Executable
   $start.Arguments = (($Arguments | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' ')
   $start.WorkingDirectory = $repoRoot
   $start.UseShellExecute = $false
-  $start.CreateNoWindow = $true
-  $start.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+  $start.CreateNoWindow = !$Visible
+  $start.WindowStyle = if ($Visible) { [Diagnostics.ProcessWindowStyle]::Normal } else { [Diagnostics.ProcessWindowStyle]::Hidden }
   $start.RedirectStandardOutput = $true
   $start.RedirectStandardError = $true
+  if ($Visible) { $start.EnvironmentVariables['ELECTRON_SMOKE'] = '0' }
   $process = New-Object Diagnostics.Process
   $process.StartInfo = $start
   if (!$process.Start()) { throw "Could not start $Executable" }
@@ -163,6 +168,9 @@ try {
   if (!$MediaPath) { $MediaPath = Join-Path $repoRoot 'build/real-media-tests/input/tr_tr.wav' }
   $MediaPath = [IO.Path]::GetFullPath($MediaPath)
   if (!(Test-Path -LiteralPath $MediaPath -PathType Leaf)) { throw "A real speech sample is required: $MediaPath" }
+  if (!$SmokeMediaPath) { $SmokeMediaPath = $MediaPath }
+  $SmokeMediaPath = [IO.Path]::GetFullPath($SmokeMediaPath)
+  if (!(Test-Path -LiteralPath $SmokeMediaPath -PathType Leaf)) { throw "The wider source smoke media is missing: $SmokeMediaPath" }
   $node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
   if (!$node) {
     $node = Get-ChildItem -LiteralPath (Join-Path $repoRoot 'build/dev-tools') -Directory -Filter 'node-*-win-x64' |
@@ -229,6 +237,27 @@ try {
   Save-Report
 
   New-Item -ItemType Directory -Path $installParent | Out-Null
+  if ($TestUpgrade) {
+    # The immutable baseline is the separately identified, previously verified
+    # fixture. Never use the production installer for this upgrade test.
+    $baseline = Join-Path $repoRoot 'build/phase2/baseline/My-Transcript-Installer-Smoke-x64-v1.0.0.exe'
+    $baselineHash = 'ACFFDDC69576B183A22C795ED89DD99B2374AA6915EB8DBD0DF36E15BBCA66A3'
+    if (!(Test-Path -LiteralPath $baseline -PathType Leaf) -or (Get-FileHash -LiteralPath $baseline -Algorithm SHA256).Hash -ne $baselineHash) { throw 'The verified isolated v1.0.0 upgrade baseline is missing or differs.' }
+    Start-TestProcess $baseline @('--current-user', '/S', ('/D=' + (Assert-TestInstallPath $installRoot))) 'baseline-install' 600
+    $installed = $true
+    if ((Get-Item -LiteralPath (Join-Path $installRoot $testExeName)).VersionInfo.ProductVersion -notlike '1.0.0*') { throw 'The installed upgrade baseline is not version 1.0.0.' }
+    $upgradeDataRoot = [IO.Path]::GetFullPath((Join-Path $env:APPDATA 'my-transcript-installer-smoke-test'))
+    if (Test-Path -LiteralPath $upgradeDataRoot) { $upgradeDataRoot = $null; throw 'An existing default fixture user profile must be inspected before upgrade testing; no files were overwritten.' }
+    New-Item -ItemType Directory -Path (Join-Path $upgradeDataRoot 'data') | Out-Null
+    $upgradeMarker = Join-Path $upgradeDataRoot ('codex-fixture-owner-' + $runId + '.json')
+    [IO.File]::WriteAllText($upgradeMarker, $runId, $utf8)
+    $upgradeSettings = @{ defaultQuality='Yüksek Doğruluk'; defaultLanguage='Almanca'; timestamps=$true; autoCorrect=$false; soundEffects=$false; animations=$false; transparentTheme=$true }
+    $upgradeHistory = @(@{ id='upgrade-preserved-v1'; sourceType='file'; sourcePath=$MediaPath; name='Önceki sürüm kaydı.wav'; format='WAV'; sizeText='1 MB'; duration='00:14'; durationSeconds=14; quality='Dengeli'; language='Türkçe'; status='Tamamlandı'; stage='Tamamlandı'; progress=100; remaining='Tamamlandı'; transcript='[00:00:01] Önceki kayıt korunur: ç ğ ı İ ö ş ü.'; outputFiles=@{}; createdAt='2026-10-18T10:00:00.000Z' })
+    [IO.File]::WriteAllText((Join-Path $upgradeDataRoot 'data/settings.json'), ($upgradeSettings | ConvertTo-Json -Depth 5), $utf8)
+    [IO.File]::WriteAllText((Join-Path $upgradeDataRoot 'data/history.json'), (ConvertTo-Json -InputObject $upgradeHistory -Depth 10), $utf8)
+    $upgradeHashes = @{}; foreach ($name in @('settings.json','history.json')) { $upgradeHashes[$name]=(Get-FileHash -LiteralPath (Join-Path $upgradeDataRoot ('data/' + $name)) -Algorithm SHA256).Hash }
+    $report.upgradeBaseline = @{ version='1.0.0'; installerSha256=$baselineHash; userData=$upgradeDataRoot; seededHistoryId='upgrade-preserved-v1' }
+  }
   Start-TestProcess $installer @('--current-user', '/S', ('/D=' + (Assert-TestInstallPath $installRoot))) 'install' 600
   $installed = $true
   $installedExe = Join-Path $installRoot $testExeName
@@ -236,6 +265,13 @@ try {
   $asar = Join-Path $resources 'app.asar'
   if (!(Test-Path -LiteralPath $installedExe) -or !(Test-Path -LiteralPath $asar)) { throw 'Installed executable or app.asar is missing.' }
   $report.checks.install = 'passed'
+  $expectedVersion = (Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $repoRoot 'package.json') | ConvertFrom-Json).version
+  $report.installedVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
+  if ($report.installedVersion -notlike ($expectedVersion + '*')) { throw 'The installed EXE version differs from the new package version.' }
+  if ($TestUpgrade) {
+    foreach ($name in @('settings.json','history.json')) { if ((Get-FileHash -LiteralPath (Join-Path $upgradeDataRoot ('data/' + $name)) -Algorithm SHA256).Hash -ne $upgradeHashes[$name]) { throw ('Upgrade changed existing fixture data: ' + $name) } }
+    $report.checks.upgradeFromV1PreservesSettingsAndHistory = 'passed'
+  }
   $shell = New-Object -ComObject WScript.Shell
   foreach ($shortcut in (Get-TestShortcutPaths)) {
     if (!(Test-Path -LiteralPath $shortcut)) { throw "Test shortcut missing: $shortcut" }
@@ -284,16 +320,24 @@ const assert = require('node:assert/strict');
   $listener.Stop()
   $launchConfig = Join-Path $evidenceRoot 'installed-launch-config.json'
   $launchEvidence = Join-Path $evidenceRoot 'installed-launch.json'
+  $launchArguments = @(
+    ('--remote-debugging-port=' + $debugPort), '--remote-debugging-address=127.0.0.1',
+    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-features=CalculateNativeWinOcclusion',
+    ('--user-data-dir=' + $(if ($upgradeDataRoot) { $upgradeDataRoot } else { Join-Path $evidenceRoot 'installed-exe-user-data' })),
+    '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost'
+  )
+  # Native-dialog and compositor tests use a visible real app window. Keep
+  # the separate source smoke hidden; no product-only test hook is introduced.
+  $launchSmoke = $env:ELECTRON_SMOKE
+  $env:ELECTRON_SMOKE = '0'
+  try { $launch = Start-TestProcess $installedExe $launchArguments 'installed-launch' -Background -Visible }
+  finally { $env:ELECTRON_SMOKE = $launchSmoke }
   [IO.File]::WriteAllText($launchConfig, (@{
     port = $debugPort; executable = $installedExe; sample = $MediaPath; evidence = $launchEvidence
+    processId = $launch.Process.Id; launchArguments = $launchArguments
     jobId = ('installer-exe-' + $runId)
     outputDirectory = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Sesi Metne Donusturme Ciktilar')
   } | ConvertTo-Json -Depth 5), $utf8)
-  $launch = Start-TestProcess $installedExe @(
-    ('--remote-debugging-port=' + $debugPort), '--remote-debugging-address=127.0.0.1',
-    ('--user-data-dir=' + (Join-Path $evidenceRoot 'installed-exe-user-data')),
-    '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost'
-  ) 'installed-launch' -Background
   try {
     Start-TestProcess $node @((Join-Path $repoRoot 'scripts/installed-exe-smoke.cjs'), $launchConfig) 'installed-launch-check' 1800
   } finally {
@@ -319,7 +363,7 @@ const assert = require('node:assert/strict');
   } else {
     $env:ELECTRON_APP_ROOT = $asar
     $env:ELECTRON_APP_RESOURCES = $resources
-    $env:ELECTRON_TEST_MEDIA = $MediaPath
+    $env:ELECTRON_TEST_MEDIA = $SmokeMediaPath
     Start-TestProcess (Join-Path $repoRoot 'node_modules/electron/dist/electron.exe') @((Join-Path $repoRoot 'scripts/electron-smoke.cjs')) 'installed-source-smoke' 3600
     $smokeLog = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $evidenceRoot 'installed-source-smoke.stdout.log')
     if ($smokeLog -notmatch 'ELECTRON_SMOKE_OK') { throw 'Installed source smoke success marker is missing.' }
@@ -327,8 +371,17 @@ const assert = require('node:assert/strict');
     $report.installedSourceSmoke = $smokeLog.Trim()
   }
   Save-Report
+  if ($upgradeDataRoot) {
+    $retained = @(Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $upgradeDataRoot 'data/history.json') | ConvertFrom-Json) | Where-Object id -eq 'upgrade-preserved-v1'
+    if (@($retained).Count -ne 1 -or $retained.transcript -ne '[00:00:01] Önceki kayıt korunur: ç ğ ı İ ö ş ü.') { throw 'The application UI tests lost or altered the historical upgrade fixture.' }
+    $uninstallHashes = @{}; foreach ($name in @('settings.json','history.json')) { $uninstallHashes[$name]=(Get-FileHash -LiteralPath (Join-Path $upgradeDataRoot ('data/' + $name)) -Algorithm SHA256).Hash }
+  }
   Uninstall-TestApplication
   $installed = $false
+  if ($upgradeDataRoot) {
+    foreach ($name in @('settings.json','history.json')) { if (!(Test-Path -LiteralPath (Join-Path $upgradeDataRoot ('data/' + $name))) -or (Get-FileHash -LiteralPath (Join-Path $upgradeDataRoot ('data/' + $name)) -Algorithm SHA256).Hash -ne $uninstallHashes[$name]) { throw ('Uninstall did not preserve user data: ' + $name) } }
+    $report.checks.uninstallPreservesSettingsAndHistory = 'passed'
+  }
   $report.status = 'passed'
 } catch {
   $pendingError = $_
@@ -338,6 +391,13 @@ const assert = require('node:assert/strict');
 } finally {
   if ($installed) {
     try { Uninstall-TestApplication } catch { $report.cleanupError = $_.Exception.Message }
+  }
+  if ($upgradeDataRoot -and $upgradeMarker -and (Test-Path -LiteralPath $upgradeMarker -PathType Leaf)) {
+    $expectedProfile = [IO.Path]::GetFullPath((Join-Path $env:APPDATA 'my-transcript-installer-smoke-test'))
+    if ($upgradeDataRoot -eq $expectedProfile -and $upgradeDataRoot.StartsWith([IO.Path]::GetFullPath($env:APPDATA) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -and [IO.File]::ReadAllText($upgradeMarker) -eq $runId) {
+      Remove-Item -LiteralPath $upgradeDataRoot -Recurse -Force
+      $report.checks.ownedUpgradeProfileCleanup = 'passed'
+    } else { $report.status='failed'; $report.cleanupError='The upgrade profile ownership/path guard failed; profile preserved.' }
   }
   foreach ($name in $originalEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $originalEnvironment[$name], 'Process') }
   if ($null -ne $protectedBefore) {

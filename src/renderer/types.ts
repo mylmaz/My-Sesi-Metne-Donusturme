@@ -48,6 +48,7 @@ export interface JobRecord {
   remaining: string;
   transcript: string;
   rawTranscript?: string;
+  segments?: { start: number; end: number; text: string }[];
   outputFiles: {
     pdf?: string;
     docx?: string;
@@ -56,6 +57,7 @@ export interface JobRecord {
   createdAt: string;
   completedAt?: string;
   error?: string;
+  warning?: string;
   thumbnail?: string;
   channel?: string;
 }
@@ -79,7 +81,7 @@ export interface DesktopApi {
   getYouTubeInfo(url: string): Promise<YouTubeInfo>;
   transcribe(job: JobRecord, settings: AppSettings): Promise<JobRecord>;
   cancelTranscription(jobId: string): Promise<boolean>;
-  exportFile(payload: ExportPayload): Promise<{ path: string }>;
+  exportFile(payload: ExportPayload): Promise<{ path?: string; canceled?: boolean }>;
   revealPath(path: string): Promise<boolean>;
   playSound(name: string): Promise<boolean>;
   onProgress(callback: (payload: { id: string; progress: number; stage: string; remaining: string }) => void): () => void;

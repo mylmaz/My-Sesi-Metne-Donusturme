@@ -6,6 +6,8 @@ import * as os from "os";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { Readable } from "stream";
 import { pathToFileURL } from "url";
+import { parseSrtSegments, renderTranscript, type TranscriptSegment } from "./transcription";
+import { readStereoRms, stereoCancellationChannel } from "./audio-preparation";
 
 type Quality = "Hızlı" | "Dengeli" | "Yüksek Doğruluk";
 type Language = "Otomatik" | "Türkçe" | "İngilizce" | "Almanca";
@@ -42,9 +44,11 @@ interface JobRecord {
   createdAt: string;
   completedAt?: string;
   error?: string;
+  warning?: string;
   thumbnail?: string;
   channel?: string;
   detectedLanguage?: string;
+  segments?: TranscriptSegment[];
 }
 
 const defaultSettings: AppSettings = {
@@ -92,8 +96,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 1000,
-    minWidth: 1280,
-    minHeight: 760,
+    minWidth: 960,
+    minHeight: 520,
     title: "My Sesi Metne Dönüştürme",
     icon: resolveResource("resources", "app-icon.ico"),
     backgroundColor: "#eef6ff",
@@ -235,7 +239,15 @@ function readJson<T>(file: string, fallback: T): T {
 
 function writeJson(file: string, value: unknown) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(value, null, 2), "utf8");
+  // Replace the complete document only after the new copy is safely written.
+  // An interrupted write must not truncate an existing transcript history.
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(value, null, 2), { encoding: "utf8", flag: "wx" });
+    fs.renameSync(temporary, file);
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
 }
 
 function registerProcess(jobId: string | undefined, child: ChildProcessWithoutNullStreams) {
@@ -352,6 +364,27 @@ async function probeDuration(file: string) {
   }
 }
 
+async function stereoInputFilter(input: string, ffmpeg: string, jobId: string) {
+  try {
+    const probe = await runProcess(requireTool("ffmpeg", "ffprobe.exe", "FFprobe"), ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels,channel_layout", "-of", "json", input], { jobId });
+    const stream = JSON.parse(probe.stdout).streams?.[0];
+    // Ordinary two-channel PCM WAV often omits channel_layout; FFmpeg already
+    // interprets that same channel order as L/R during the existing -ac 1 mix.
+    // Keep explicitly declared non-stereo layouts outside this exception.
+    if (stream?.channels !== 2 || (stream.channel_layout && !["stereo", "unknown"].includes(stream.channel_layout))) return "";
+    const result = await runProcess(ffmpeg, ["-hide_banner", "-nostdin", "-i", input, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", "pan=3c|c0=c0|c1=c1|c2=0.5*c0+0.5*c1,astats=metadata=0:reset=0", "-f", "null", "-"], { jobId });
+    const decision = stereoCancellationChannel(readStereoRms(result.stderr));
+    if (!decision) return "";
+    runtimeLog(`audio:stereo-cancellation:${jobId}:${JSON.stringify(decision)}`);
+    return `pan=mono|c0=c${decision.channel},`;
+  } catch (error) {
+    if (error instanceof CancelledError || cancelledJobs.has(jobId)) throw error;
+    // Diagnostics must never make a previously supported media file fail.
+    runtimeLog(`audio:stereo-analysis:error:${jobId}:${String(error)}`);
+    return "";
+  }
+}
+
 function validateLocalMedia(value: unknown) {
   if (typeof value !== "string" || !path.isAbsolute(value) || value.includes("\0")) {
     throw new UserVisibleError("Dosyanın bilgisayardaki tam yolu alınamadı. Dosyayı yeniden seçin.");
@@ -439,7 +472,7 @@ function cleanTranscript(text: string) {
 }
 
 function hasMeaningfulTranscript(text: string) {
-  return (text.match(/[\p{L}\p{N}]/gu) || []).length >= 2;
+  return typeof text === "string" && /[\p{L}\p{N}]/u.test(text.replace(/\[\d+(?::\d{2}){1,2}(?:[.,]\d{1,3})?\]/g, ""));
 }
 
 function validateYouTubeUrl(value: string) {
@@ -460,30 +493,17 @@ function validateYouTubeUrl(value: string) {
   }
 }
 
-function parseSrt(content: string, timestamps: boolean) {
-  const blocks = content.replace(/\r\n/g, "\n").split(/\n\s*\n/);
-  const lines: string[] = [];
-  for (const block of blocks) {
-    const parts = block.split("\n").map((line) => line.trim()).filter(Boolean);
-    const time = parts.find((line) => line.includes("-->"));
-    if (!time) continue;
-    const text = parts.filter((line) => !/^\d+$/.test(line) && !line.includes("-->")).join(" ").trim();
-    if (!text) continue;
-    const start = time.split("-->")[0].trim().replace(",", ".").split(".")[0];
-    lines.push(`${timestamps ? `[${start}] ` : ""}${text}`);
-  }
-  return cleanTranscript(lines.join("\n"));
-}
-
 function normalizeTranscript(text: string, settings: AppSettings) {
   if (settings.autoCorrect === false) return (text || "").trim();
   return cleanTranscript(text);
 }
 
 function emitProgress(id: string, progress: number, stage: string, startedAt?: number) {
+  const maximum = stage === "Tamamlandı" ? 100 : 99.99;
+  progress = Number.isFinite(progress) ? Math.round(Math.max(0, Math.min(maximum, progress)) * 100) / 100 : 0;
   const elapsed = startedAt ? (Date.now() - startedAt) / 1000 : 0;
-  let remaining = "Hesaplanıyor…";
-  if (progress > 5 && startedAt) {
+  let remaining = stage === "Tamamlandı" ? "—" : "Hesaplanıyor…";
+  if (progress > 5 && progress < 100 && startedAt) {
     const total = elapsed / (progress / 100);
     remaining = formatDuration(Math.max(3, total - elapsed));
   }
@@ -705,7 +725,14 @@ trustedHandle("history:get", () => {
   try {
     const saved: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
     if (!Array.isArray(saved)) throw new Error("Geçmiş dosyası bir kayıt listesi değil.");
-    return saved;
+    return saved.map((record: JobRecord) => {
+      // Older jobs can have their model text only in rawTranscript. Reuse that
+      // exact stored text; never re-transcribe or apply today's settings to it.
+      if (record?.status === "Tamamlandı" && !hasMeaningfulTranscript(record.transcript) && hasMeaningfulTranscript(record.rawTranscript || "")) {
+        return { ...record, transcript: record.rawTranscript };
+      }
+      return record;
+    });
   } catch (error) {
     // Let the renderer keep persistence disabled rather than overwrite a
     // recoverable history file with its initial empty queue.
@@ -786,6 +813,7 @@ trustedHandle("transcribe:start", async (_event, job: JobRecord, settings: AppSe
     const input = await prepareInput(job);
     emitProgress(job.id, 16, "Ses hazırlanıyor", startedAt);
     const wav = path.join(dir, "input_16k.wav");
+    const channelFilter = await stereoInputFilter(input, ffmpeg, job.id);
     await runProcess(ffmpeg, [
       "-y",
       "-hide_banner",
@@ -812,7 +840,7 @@ trustedHandle("transcribe:start", async (_event, job: JobRecord, settings: AppSe
       "-sample_fmt",
       "s16",
       "-af",
-      "aresample=async=1:first_pts=0,loudnorm=I=-18:LRA=11:TP=-1.5",
+      `${channelFilter}aresample=async=1:first_pts=0,loudnorm=I=-18:LRA=11:TP=-1.5`,
       "-f",
       "wav",
       wav
@@ -865,10 +893,10 @@ trustedHandle("transcribe:start", async (_event, job: JobRecord, settings: AppSe
     emitProgress(job.id, 94, "Çıktı oluşturuluyor", startedAt);
     const srt = `${outBase}.srt`;
     const txt = `${outBase}.txt`;
-    let transcript = "";
-    if (fs.existsSync(srt)) transcript = parseSrt(fs.readFileSync(srt, "utf8"), settings.timestamps);
-    if (!transcript && fs.existsSync(txt)) transcript = normalizeTranscript(fs.readFileSync(txt, "utf8"), settings);
-    transcript = normalizeTranscript(transcript, settings);
+    const segments = fs.existsSync(srt) ? parseSrtSegments(fs.readFileSync(srt, "utf8")) : [];
+    let rawTranscript = renderTranscript(segments, settings.timestamps);
+    if (!rawTranscript && fs.existsSync(txt)) rawTranscript = fs.readFileSync(txt, "utf8").trim();
+    const transcript = normalizeTranscript(rawTranscript, settings);
     if (!hasMeaningfulTranscript(transcript)) {
       throw new UserVisibleError("Konuşma algılanamadı veya Whisper boş çıktı üretti. Ses seviyesini ve seçilen dili kontrol edin.");
     }
@@ -880,14 +908,23 @@ trustedHandle("transcribe:start", async (_event, job: JobRecord, settings: AppSe
       progress: 100,
       stage: "Tamamlandı",
       remaining: "Tamamlandı",
-      rawTranscript: transcript,
+      rawTranscript,
       transcript,
+      segments: segments.length ? segments : undefined,
       detectedLanguage: detected,
       completedAt: new Date().toISOString(),
-      error: undefined
+      error: undefined,
+      warning: undefined
     };
-    const autoTxt = await exportTxt(completed);
-    completed.outputFiles = { ...completed.outputFiles, txt: autoTxt };
+    try {
+      const autoTxt = await exportTxt(completed);
+      completed.outputFiles = { ...completed.outputFiles, txt: autoTxt };
+    } catch (error) {
+      // A Documents-folder permission or disk error must not discard a valid
+      // model result. The user can still choose another manual export path.
+      runtimeLog(`transcribe:auto-txt:error:${job.id}:${error instanceof Error ? error.stack || error.message : String(error)}`);
+      completed.warning = "Metin hazır; otomatik TXT kopyası kaydedilemedi. Sonuç ekranından kayıt konumu seçebilirsiniz.";
+    }
     emitProgress(job.id, 100, "Tamamlandı", startedAt);
     return completed;
   } catch (error) {
@@ -901,6 +938,9 @@ trustedHandle("transcribe:start", async (_event, job: JobRecord, settings: AppSe
         remaining: "-",
         transcript: "",
         rawTranscript: "",
+        segments: undefined,
+        detectedLanguage: undefined,
+        warning: undefined,
         outputFiles: {},
         completedAt: new Date().toISOString(),
         error: undefined
@@ -931,9 +971,30 @@ trustedHandle("export:file", async (_event, payload: { type: "pdf" | "docx" | "t
   if (!payload?.job || payload.job.status !== "Tamamlandı" || !hasMeaningfulTranscript(payload.job.transcript)) {
     throw new UserVisibleError("Dışa aktarmak için tamamlanmış ve geçerli bir transkript gerekli.");
   }
-  if (payload.type === "pdf") return { path: await exportPdf(payload.job) };
-  if (payload.type === "docx") return { path: await exportDocx(payload.job) };
-  return { path: await exportTxt(payload.job) };
+  if (!["pdf", "docx", "txt"].includes(payload.type)) throw new UserVisibleError("Dışa aktarma biçimi geçersiz.");
+  const labels = { pdf: "PDF belgesi", docx: "Word belgesi", txt: "Metin belgesi" };
+  try {
+    const options = {
+      title: `${labels[payload.type]} kaydet`,
+      defaultPath: path.join(app.getPath("documents"), `${safeName(path.parse(payload.job.name).name)}.${payload.type}`),
+      buttonLabel: "Kaydet",
+      filters: [{ name: labels[payload.type], extensions: [payload.type] }],
+      properties: ["dontAddToRecent"] as ("dontAddToRecent")[]
+    };
+    const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const destination = result.filePath;
+    if (payload.type === "pdf") return { path: await exportPdf(payload.job, destination) };
+    if (payload.type === "docx") return { path: await exportDocx(payload.job, destination) };
+    return { path: await exportTxt(payload.job, destination) };
+  } catch (error) {
+    runtimeLog(`export:${payload.type}:error:${error instanceof Error ? error.stack || error.message : String(error)}`);
+    if (error instanceof UserVisibleError) throw error;
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "EACCES" || code === "EPERM") throw new UserVisibleError("Dosya kaydedilemedi. Seçtiğiniz klasörün yazma iznini ve aynı adlı dosyanın başka bir programda açık olup olmadığını kontrol edin.");
+    if (code === "ENOSPC") throw new UserVisibleError("Dosya kaydedilemedi. Diskte yeterli boş alan bulunmuyor.");
+    throw new UserVisibleError("Dosya kaydedilemedi. Kayıt konumunu kontrol edin; teknik ayrıntılar uygulama günlüğüne yazıldı.");
+  }
 });
 
 trustedHandle("shell:reveal", async (_event, filePath: string) => {
@@ -960,13 +1021,25 @@ function assertOutputFile(file: string, label: string) {
   return file;
 }
 
-async function exportTxt(job: JobRecord) {
-  const file = outputBase(job, "txt");
-  fs.writeFileSync(file, renderPlainTranscript(job), "utf8");
-  return assertOutputFile(file, "TXT");
+async function writeExport(file: string, label: string, write: (temporary: string) => Promise<void>) {
+  const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.tmp`);
+  try {
+    await write(temporary);
+    assertOutputFile(temporary, label);
+    fs.renameSync(temporary, file);
+    return assertOutputFile(file, label);
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
 }
 
-async function exportDocx(job: JobRecord) {
+async function exportTxt(job: JobRecord, destination?: string) {
+  return writeExport(destination || outputBase(job, "txt"), "TXT", async (temporary) => {
+    fs.writeFileSync(temporary, renderPlainTranscript(job), { encoding: "utf8", flag: "wx" });
+  });
+}
+
+async function exportDocx(job: JobRecord, destination?: string) {
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableCell, TableRow, WidthType } = await import("docx");
   const rows = [
     ["Dosya adı", job.name],
@@ -997,51 +1070,53 @@ async function exportDocx(job: JobRecord) {
     }]
   });
   const buffer = await Packer.toBuffer(doc);
-  const file = outputBase(job, "docx");
-  fs.writeFileSync(file, buffer);
-  return assertOutputFile(file, "DOCX");
+  return writeExport(destination || outputBase(job, "docx"), "DOCX", async (temporary) => {
+    fs.writeFileSync(temporary, buffer, { flag: "wx" });
+  });
 }
 
-async function exportPdf(job: JobRecord) {
+async function exportPdf(job: JobRecord, destination?: string) {
   const PDFDocument = (await import("pdfkit")).default;
-  const file = outputBase(job, "pdf");
-  const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
-  const stream = fs.createWriteStream(file);
-  const font = ["C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\tahoma.ttf"].find((candidate) => fs.existsSync(candidate));
+  const fonts = path.join(process.env.WINDIR || process.env.SystemRoot || "C:\\Windows", "Fonts");
+  const font = ["arial.ttf", "segoeui.ttf", "tahoma.ttf"].map((name) => path.join(fonts, name)).find((candidate) => fs.existsSync(candidate));
   if (!font) throw new UserVisibleError("PDF için Türkçe karakter destekli Windows yazı tipi bulunamadı.");
-  doc.registerFont("AppText", font);
-  doc.font("AppText");
-  doc.pipe(stream);
-  doc.fontSize(20).fillColor("#111827").text("My Sesi Metne Dönüştürme");
-  doc.moveDown(0.2).fontSize(15).fillColor("#4f46e5").text("Transkript Raporu");
-  doc.moveDown();
-  doc.fontSize(10).fillColor("#334155");
-  doc.text(`Dosya adı: ${job.name}`);
-  doc.text(`Tarih: ${new Date().toLocaleString("tr-TR")}`);
-  doc.text(`Süre: ${job.duration}`);
-  doc.text(`Dil: ${job.language}`);
-  doc.text(`Kalite: ${job.quality}`);
-  doc.moveDown();
-  doc.fontSize(11).fillColor("#111827");
-  for (const line of (job.transcript || "Metin bulunamadı.").split(/\r?\n/)) {
-    const match = line.match(/^\[(.+?)\]\s*(.*)$/);
-    const printable = match ? `[${match[1]}] ${match[2] || ""}` : line;
-    doc.fillColor(match ? "#1f3fbf" : "#111827").text(printable || " ", {
-      width: 500,
-      lineGap: 4,
-      paragraphGap: 3,
-      features: []
+  return writeExport(destination || outputBase(job, "pdf"), "PDF", async (temporary) => {
+    await new Promise<void>((resolve, reject) => {
+      const doc = new PDFDocument({ size: "A4", margin: 48 });
+      const stream = fs.createWriteStream(temporary, { flags: "wx" });
+      // Attach listeners before writing. Both a stream failure and a PDF/font
+      // failure must reject the IPC call rather than leave a partial file.
+      stream.once("finish", resolve);
+      stream.once("error", reject);
+      doc.once("error", (error) => stream.destroy(error));
+      doc.pipe(stream);
+      try {
+        doc.registerFont("AppText", font).font("AppText");
+        doc.fontSize(20).fillColor("#111827").text("My Sesi Metne Dönüştürme");
+        doc.moveDown(0.2).fontSize(15).fillColor("#4f46e5").text("Transkript Raporu");
+        doc.moveDown().fontSize(10).fillColor("#334155");
+        doc.text(`Dosya adı: ${job.name}`);
+        doc.text(`Tarih: ${new Date().toLocaleString("tr-TR")}`);
+        doc.text(`Süre: ${job.duration}`);
+        doc.text(`Dil: ${job.language}`);
+        doc.text(`Kalite: ${job.quality}`);
+        doc.moveDown().fontSize(11).fillColor("#111827");
+        for (const line of (job.transcript || "Metin bulunamadı.").split(/\r?\n/)) {
+          // PDFKit wraps and paginates within the A4 margins. A manual y-based
+          // page break would add blank pages and can move text past the footer.
+          doc.fillColor(/^\[.+?\]/.test(line) ? "#1f3fbf" : "#111827").text(line || " ", {
+            width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+            lineGap: 4, paragraphGap: 3, features: []
+          });
+        }
+        doc.moveDown().fontSize(9).fillColor("#64748b").text("© 2026 Mustafa Yılmaz. Tüm hakları saklıdır.");
+        doc.end();
+      } catch (error) {
+        doc.unpipe(stream);
+        stream.destroy(error instanceof Error ? error : new Error(String(error)));
+      }
     });
-    if (doc.y > 760) doc.addPage();
-  }
-  doc.moveDown();
-  doc.fontSize(9).fillColor("#64748b").text("© 2026 Mustafa Yılmaz. Tüm hakları saklıdır.");
-  doc.end();
-  await new Promise<void>((resolve, reject) => {
-    stream.on("finish", resolve);
-    stream.on("error", reject);
   });
-  return assertOutputFile(file, "PDF");
 }
 
 function renderPlainTranscript(job: JobRecord) {

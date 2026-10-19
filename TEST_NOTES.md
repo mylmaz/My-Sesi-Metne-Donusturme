@@ -1,5 +1,7 @@
 # Electron doğrulama raporu
 
+**1.1.0 / ikinci aşama:** Güncel sonuçlar ve yeni kurulu EXE testleri [PHASE2_REPORT.md](PHASE2_REPORT.md), sayısal kalite ölçümleri [WHISPER_QUALITY_REPORT.md](WHISPER_QUALITY_REPORT.md) içindedir. Aşağıdaki 1.0.0 kayıtları önceki aşamaya aittir. O aşamadaki dışa aktarma kontrolleri ağırlıklı olarak IPC üzerinden dosya üretimini doğrulamıştı; gerçek sonuç düğmesi ve yerel kayıt penceresi testinin yerine geçmezler.
+
 Doğrulama oturumu: 18–19 Ekim 2026 (Europe/Istanbul). Aktif uygulama Electron sürümüdür; eski C#/WPF kaynakları değiştirilmemiştir.
 
 ## Uygulanan değişiklikler

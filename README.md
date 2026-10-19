@@ -2,7 +2,7 @@
 
 Windows 10/11 x64 için Electron 34, React 18 ve TypeScript ile geliştirilmiş yerel ses/video transkripsiyon uygulaması. Yerel medya, Whisper modeli ve dışa aktarma işlemleri kurulumdan itibaren çevrimdışı çalışır. YouTube bilgisi ve sesi almak için internet gerekir.
 
-Geliştirici: Mustafa Yılmaz · Sürüm: 1.0.0 · Uygulama kaynak lisansı: MIT
+Geliştirici: Mustafa Yılmaz · Sürüm: 1.1.0 · Uygulama kaynak lisansı: MIT
 
 ## Özellikler
 
@@ -13,8 +13,13 @@ Geliştirici: Mustafa Yılmaz · Sürüm: 1.0.0 · Uygulama kaynak lisansı: MIT
 - Whisper **Large-v2 q5_0**; tüm kalite seçenekleri aynı modeli kullanır: Hızlı Beam 4, Dengeli Beam 6, Yüksek Doğruluk Beam 8.
 - Her iki ekranda aynı dil sırası: **Otomatik, Türkçe, İngilizce, Almanca**. Seçim kaydedilir ve ekranlar arasında paylaşılır.
 - Otomatik mod `-l auto` kullanır, dil yönlendiren başlangıç metni göndermez; modelin desteklediği diller arasından seçim yapar. Gerçek algılama sonucu varsa sonuç ekranında dil kodu gösterilir. Desteklenmeyen diller için doğruluk garantisi yoktur.
-- İşlem kuyruğu, aşama/ilerleme, gerçek süreç iptali, geçmiş ve ayarlar.
-- UTF-8 TXT, Türkçe karakter destekli PDF ve DOCX dışa aktarma.
+- Pencere genişliğine uyum sağlayan kuyruk ve kompakt oynatıcı; tablo gerektiğinde kendi içinde yatay kaydırılır.
+- İşlem kuyruğu, Türkçe biçimlendirilmiş aşama/ilerleme, gerçek süreç iptali, geçmiş ve ayarlar.
+- Sonuçtaki zaman damgasına tıklayarak yerel veya YouTube sesinde ilgili konuma gitme.
+- Geçmişte saklanmış transkriptleri yeniden açma; orijinal ses silinse bile metni okuma ve dışa aktarma.
+- Kayıt konumu seçilerek UTF-8 TXT, gömülü Türkçe fontlu çok sayfalı PDF ve DOCX dışa aktarma. Kayıt penceresini iptal etmek dosya oluşturmaz.
+
+1.1.0 sürümündeki hata nedenleri, kurulu EXE testleri ve kapsam sınırları [ikinci aşama raporunda](PHASE2_REPORT.md) açıklanır. Sayısal SRT konuşma satırları korunur. Stereo kanallarda ölçülmüş ağır faz iptali varsa ses hazırlama sırasında konuşmanın mono karışımda silinmesini önleyen kanal koruması uygulanır. Whisper modeli, kalite profilleri ve sessizlik eşikleri korunmuştur. Ölçümler ve genel doğruluk iddiasının sınırları: [Whisper kalite raporu](WHISPER_QUALITY_REPORT.md).
 
 Mevcut cam efektli tasarım korunmuştur. Almanca kartının görseli proje klasöründe bulunan `Almanca.png` dosyasından içeriği değiştirilmeden alınmıştır. Eski kayıtlı Kürtçe varsayılanı Otomatik seçimine taşınır; eski transkript içerikleri korunur.
 
@@ -34,7 +39,7 @@ installer       Aktif NSIS yardımcı makroları
 
 ## Geliştirme ve çevrimdışı paket hazırlığı
 
-Windows x64, Node.js 20 veya daha yeni LTS ve npm gerekir. Geliştirici hazırlığı ağ erişimi ve model/araç/paket kopyaları için yeterli disk alanı gerektirir; en az 8 GB boş alan önerilir.
+Geliştirme ve test araçları için Windows x64, Node.js 22.13 veya üzeri ve npm gerekir; bu çalışma Node.js 22.23.0 ile doğrulanmıştır. Geliştirici hazırlığı ağ erişimi ve model/araç/paket kopyaları için yeterli disk alanı gerektirir; en az 8 GB boş alan önerilir. Son kullanıcının Node.js kurması gerekmez.
 
 ```powershell
 npm ci
@@ -63,11 +68,23 @@ Paketleme aracı, eski sürümün PDF bağımlılıklarını yanlış konuma yer
 ```powershell
 npm run typecheck
 npm run build
+npm run test:unit
 $env:ELECTRON_TEST_MEDIA = 'C:\medya\kisa-konusma.wav'
 npm run test:electron
 ```
 
 Electron testi gerçek FFmpeg ve Large-v2 modelini çalıştırır; sahte transkript üretmez. Test verileri ve çıktıları `build` altında yalıtılır. Ek dil ve isteğe bağlı internet/YouTube test değişkenleri için `scripts/electron-smoke.cjs` ve gerçek çalıştırma sonuçları için [TEST_NOTES.md](TEST_NOTES.md) dosyasına bakın. Dosya Gezgini'nde elle gerçekleştirilen test ile DevTools üzerinden yerel dosya bırakma testi ayrı değerlendirilir.
+
+Geliştirme testinde kayıt penceresinin cevabı denetlenebilir bir test yoluyla değiştirilir. `scripts/installed-exe-smoke.cjs` ise ayrı NSIS test kurulumundaki gerçek EXE'yi açar, sonuç düğmelerine fare olayları gönderir ve gerçek Windows kayıt pencerelerini yalnızca ilgili test sürecine ait kontroller üzerinden kullanır. Üç formatın tam metni, Türkçe karakterler, PDF sayfaları, geçmişten yeniden açma ve süreç yeniden başlatma ayrı doğrulanır. Microsoft Word'ün kendisi test makinesinde kurulu değildir; DOCX içeriği bağımsız ZIP/XML okumasıyla kontrol edilir.
+
+Kurulu EXE doğrulamasındaki bağımsız PDF okuyucusu yalnız test için, paketlenen uygulamanın dışında hazırlanır:
+
+```powershell
+npm install --prefix build/phase2/pdf-inspector --ignore-scripts --no-save --package-lock=false pdfjs-dist@6.4.299
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-installer.ps1 -MediaPath 'C:\test\uzun-konusma.wav' -SmokeMediaPath 'C:\test\kisa-konusma.wav'
+```
+
+Uzun test kaydında en az üç farklı zamanlı segment bulunmalıdır. `-TestUpgrade`, bu oturumdan saklanmış ve hash'i sabitlenmiş ayrı 1.0.0 test Setup'ını gerektirir; gerçek kullanıcı kurulumunu yükseltmez. UI testinde yalnız test EXE'si görünür açılır; yardımcı işlemler gizlidir. Kurulum/test medyası ve PDF okuyucusu Git'e eklenmez.
 
 ## Windows x64 NSIS Setup
 
@@ -90,7 +107,9 @@ Temiz Windows 10/11 bilgisayarda çevrimdışı kurulum kabul testi ayrıca yap�
 - Ayarlar/geçmiş: Electron `userData/data`.
 - İşlem dosyaları: `userData/data/work`; tamamlanınca veya iptal edilince temizlenir.
 - Ses önbelleği: `userData/data/audio-cache`. YouTube indirmesi transkripsiyon ve önizleme arasında paylaşılır; oynatma dosyaları işlem klasörü temizliğinden etkilenmez. Başlangıçta 30 gün/2 GB sınırına göre temizlenir; oturumda kullanılan sesler oynatma sırasında silinmez.
-- Çıktılar: Windows Belgeler klasörü altındaki `My Sesi Metne Donusturme Ciktilar`.
+- Elle dışa aktarma: her işlemde Windows kayıt penceresinden seçtiğiniz dosya konumu.
+- Otomatik TXT kopyası: Windows Belgeler klasörü altındaki `My Sesi Metne Donusturme Ciktilar`. Bu klasöre yazılamaması hazır transkripti kaybettirmez; sonuç ekranından başka konum seçilebilir.
+- Geçmiş, tam transkript ve varsa milisaniyeli segmentleri kayıt kimliğine göre saklar. Eski kayıtlar korunur; baştan beri metin saklanmamış kayıtların geri kazanılacağı varsayılmaz.
 - Teknik günlük: Windows geçici klasöründeki `MySesiMetneDonusturme-electron.log`.
 
 `contextIsolation` açık, `nodeIntegration` kapalıdır. Renderer yalnızca uygulamanın hazırladığı seslere opak `app-media` URL'leriyle erişir; protokol keyfî dosya yolu sunmaz ve seek için byte aralıklarını destekler. Dış gezinme/pencere açma engellenir. YouTube bağlantısı değişince eski video bilgisi ve bekleyen bilgi yanıtı yeni kaynak için kullanılmaz.

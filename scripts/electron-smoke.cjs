@@ -5,6 +5,7 @@ const assert = require("assert/strict");
 const { spawnSync } = require("child_process");
 const { inflateRawSync } = require("zlib");
 const { app, BrowserWindow, dialog, net } = require("electron");
+const { timestampChecks } = require("./ui-regression.cjs");
 process.env.ELECTRON_SMOKE = "1";
 delete process.env.VITE_DEV_SERVER_URL;
 const root = path.resolve(__dirname, "..");
@@ -201,13 +202,30 @@ async function run() {
   record("offline-local-transcription-ui-result-progress-history",{chars:completed.transcript.length,detectedLanguage:completed.detectedLanguage,stages:[...new Set(stages)]});
   await wait(300);fs.writeFileSync(path.join(runDir,"result.png"),(await window.webContents.capturePage()).toPNG());
   const exportJob={...completed,transcript:`${completed.transcript}\nTürkçe karakterler: ç ğ ı İ ö ş ü`};
+  await api("saveHistory",(await api("getHistory")).map(job=>job.id===completed.id?exportJob:job));
+  await reload();await click(".nav-item","Geçmiş");await click(`[data-job-id="${completed.id}"] .view-result-btn`);
+  // This development integration test stubs only the native save-window reply.
+  // Real Save As windows are exercised by installed-exe-smoke.cjs separately.
+  const saveRequests=[];
+  dialog.showSaveDialog=async(_owner,options)=>{saveRequests.push(options);return {canceled:false,filePath:path.join(documents,`smoke-export.${options.filters[0].extensions[0]}`)};};
   for(const type of["txt","docx","pdf"]){
-    const result=await api("exportFile",{type,job:exportJob,settings});assert(result.path.startsWith(documents));const bytes=fs.readFileSync(result.path);assert(bytes.length>20);
+    const destination=path.join(documents,`smoke-export.${type}`);
+    await click(".download-buttons button",{txt:"TXT İndir",docx:"Word İndir",pdf:"PDF İndir"}[type]);
+    await until(async()=>(await api("getHistory")).find(job=>job.id===completed.id)?.outputFiles[type]===destination,`UI ${type} dışa aktarmayı tamamlamadı`,120000);
+    const bytes=fs.readFileSync(destination);assert(bytes.length>20);
     if(type==="txt") assert(bytes.toString("utf8").includes("ç ğ ı İ ö ş ü"));
     if(type==="docx"){assert.equal(bytes.readUInt32LE(0),0x04034b50);assert(unzipEntry(bytes,"word/document.xml").includes("ç ğ ı İ ö ş ü"));}
     if(type==="pdf"){assert.equal(bytes.subarray(0,5).toString(),"%PDF-");assert(bytes.toString("latin1").includes("/FontFile2"));assert(bytes.toString("latin1").includes("%%EOF"));}
-    record(`offline-export-${type}`,{bytes:bytes.length,path:result.path,unicodeVerification:type==="pdf"?"Embedded TrueType font; visual glyph rendering not asserted":"Turkish Unicode preserved"});
+    record(`offline-ui-export-${type}`,{bytes:bytes.length,path:destination,mode:"Actual result button and export IPC; native chooser response stubbed only in this source test",unicodeVerification:type==="pdf"?"Embedded TrueType font; full Unicode/multipage extraction tested in actual installed EXE suite":"Turkish Unicode preserved"});
   }
+  assert.equal(saveRequests.length,3);
+  const beforeCancel=JSON.stringify((await api("getHistory")).find(job=>job.id===completed.id).outputFiles),beforeFiles=fs.readdirSync(documents);
+  dialog.showSaveDialog=async()=>({canceled:true});await click(".download-buttons button","PDF İndir");await wait(250);
+  assert.equal(JSON.stringify((await api("getHistory")).find(job=>job.id===completed.id).outputFiles),beforeCancel);assert.deepEqual(fs.readdirSync(documents),beforeFiles);
+  assert(!/kaydedilemedi|hata/i.test(await js("document.querySelector('.badge.ready').textContent")));record("ui-save-dialog-cancel-preserves-outputs");
+  // Re-register after the deliberate result/history reload above. The previous
+  // renderer's subscriptions and arrays no longer exist in the new document.
+  await js("window.__smokeProgress=[];window.desktopApi.onProgress(e=>window.__smokeProgress.push(e));true");
   const cancel=createJob("smoke-cancel-real-process",mediaPath);
   await js(`window.__cancelSmoke=window.desktopApi.transcribe(${JSON.stringify(cancel)},${JSON.stringify(settings)});true`);
   await until(()=>js("window.__smokeProgress.some(p=>p.id==='smoke-cancel-real-process'&&p.stage==='Metne dönüştürülüyor')"),"İptal testi Whisper aşamasına ulaşmadı",120000);
@@ -236,6 +254,8 @@ async function run() {
     const youtube=(await api("getHistory")).find(j=>j.id===created.id);
     assert.equal(youtube.status,"Tamamlandı",youtube.error);assert(youtube.transcript.trim().length>5);assert(fs.existsSync(youtube.outputFiles.txt));
     assert.equal(await js("document.querySelector('.transcript-card pre')?.textContent"),youtube.transcript);
+    const timestampCount=await js("document.querySelectorAll('.transcript-timestamp').length");
+    await timestampChecks({evaluate:js,clickControl:async(_selector,_text,index)=>{assert(await js(`(()=>{const e=document.querySelectorAll('.transcript-timestamp')[${index}];if(!e)return false;e.click();return true})()`));},record:(name,details)=>record(`youtube-${name}`,details),requiredPositions:timestampCount>=3?3:1});
     const youtubeStages=await js(`window.__smokeProgress.filter(p=>p.id===${JSON.stringify(created.id)}).map(p=>p.stage)`);
     for(const stage of["Dosya hazırlanıyor","Ses hazırlanıyor","Metne dönüştürülüyor","Çıktı oluşturuluyor","Tamamlandı"])assert(youtubeStages.includes(stage),`YouTube aşaması eksik: ${stage}`);
     evidence.transcripts.push({id:created.id,sourceType:"youtube",transcript:youtube.transcript,detectedLanguage:youtube.detectedLanguage});

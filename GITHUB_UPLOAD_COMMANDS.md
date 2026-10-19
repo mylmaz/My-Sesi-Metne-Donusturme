@@ -18,7 +18,7 @@ npm run build
 ```powershell
 git diff --cached --stat
 git diff --cached --name-only
-git commit -m "fix: resolve drag drop youtube audio transcription and offline packaging"
+git commit -m "fix: resolve queue overflow exports timestamp navigation and transcript reliability"
 git push origin main
 git fetch origin
 git status -sb

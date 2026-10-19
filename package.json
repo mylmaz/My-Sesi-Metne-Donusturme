@@ -1,6 +1,6 @@
 {
   "name": "my-sesi-metne-donusturme",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "My Sesi Metne Donusturme - yerel ses/video/YouTube transkript uygulaması",
   "author": "Mustafa Yılmaz",
   "copyright": "© 2026 Mustafa Yılmaz. Tüm hakları saklıdır.",
@@ -14,6 +14,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "test:electron": "npm run build && set ELECTRON_RUN_AS_NODE=&& electron scripts/electron-smoke.cjs",
+    "test:unit": "tsc -p tsconfig.electron.json && node --test src/renderer/presentation.test.cjs scripts/transcription.test.cjs",
     "dist": "npm run build && electron-builder --win nsis --x64 --publish never",
     "tools:prepare": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-tools.ps1",
     "tools:validate": "node scripts/validate-tools.cjs"

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles/app.css";
 import type { AppSettings, JobRecord, Language, MediaFile, Quality, YouTubeInfo } from "./types";
+import { createRerunJob, formatProgress, progressValue, seekTime, transcriptLines } from "./presentation";
 
 const assets = {
   background: new URL("./assets/app-background.png", import.meta.url).href,
@@ -135,12 +136,12 @@ function App() {
       setHistoryLoaded(true);
     }).catch((error) => showNotice(readError(error, "Geçmiş okunamadı. Kayıt dosyanız korunuyor.")));
     return window.desktopApi.onProgress((payload) => {
-      setJobs((current) => current.map((job) => job.id === payload.id ? {
+      setJobs((current) => current.map((job) => job.id === payload.id && job.status === "İşleniyor" ? {
         ...job,
-        progress: payload.progress,
+        progress: progressValue(payload.progress, "İşleniyor"),
         stage: payload.stage,
         remaining: payload.remaining,
-        status: payload.progress >= 100 ? "Tamamlandı" : "İşleniyor"
+        status: "İşleniyor"
       } : job));
     });
   }, []);
@@ -148,7 +149,7 @@ function App() {
   useEffect(() => {
     document.body.classList.toggle("transparent-off", !settings.transparentTheme);
     document.body.classList.toggle("no-motion", !settings.animations);
-    if (historyLoaded) void window.desktopApi.saveHistory(jobs);
+    if (historyLoaded) void window.desktopApi.saveHistory(jobs).catch((error) => showNotice(readError(error, "Geçmiş kaydedilemedi. Kayıt dosyasını ve boş alanı kontrol edin.")));
   }, [jobs, historyLoaded, settings.transparentTheme, settings.animations]);
 
   useEffect(() => {
@@ -305,7 +306,7 @@ function App() {
       }
       setSelectedId(completed.id);
       setPage("result");
-      showNotice("Dönüştürme tamamlandı.");
+      showNotice(completed.warning || "Dönüştürme tamamlandı.");
       playUiSound(settings, "complete");
     } catch (error) {
       setJobs((current) => current.map((item) => item.id === job.id ? { ...item, status: "Hata", stage: "Bir sorun oluştu", error: readError(error, "Dönüştürme tamamlanamadı. Dosyayı yeniden deneyebilirsiniz.") } : item));
@@ -334,11 +335,19 @@ function App() {
     if (!selectedJob) return;
     try {
       const result = await window.desktopApi.exportFile({ type, job: selectedJob, settings });
-      setJobs((current) => current.map((job) => job.id === selectedJob.id ? { ...job, outputFiles: { ...job.outputFiles, [type]: result.path } } : job));
-      showNotice("Dosyanız hazır.");
-    } catch {
-      showNotice("Dosya kaydedilemedi. Lütfen tekrar deneyin.");
+      if (result.canceled || !result.path) return;
+      const savedPath = result.path;
+      setJobs((current) => current.map((job) => job.id === selectedJob.id ? { ...job, outputFiles: { ...job.outputFiles, [type]: savedPath } } : job));
+      showNotice(`Dosya kaydedildi: ${savedPath}`);
+    } catch (error) {
+      showNotice(readError(error, "Dosya kaydedilemedi. Lütfen tekrar deneyin."));
     }
+  }
+
+  function viewResult(job: JobRecord) {
+    if (job.status !== "Tamamlandı" || !job.transcript?.trim()) return;
+    setSelectedId(job.id);
+    setPage("result");
   }
 
   async function saveSettings(next = settings) {
@@ -389,16 +398,19 @@ function App() {
             activeJob={activeJob}
             addFiles={addFiles}
             runJob={runJob}
+            rerunJob={(job) => runJob(createRerunJob(job, settings))}
             clearDone={() => setJobs((current) => current.filter((job) => job.status !== "Tamamlandı"))}
             clearQueue={() => setJobs([])}
             stopJob={stopJob}
+            viewResult={viewResult}
           />
         )}
         {page === "result" && (
           <ResultPage
             job={selectedJob}
             exportCurrent={exportCurrent}
-            rerun={(job) => runJob({ ...job, id: crypto.randomUUID(), status: "Bekliyor", progress: 0, stage: "Bekliyor", transcript: "", outputFiles: {}, createdAt: new Date().toISOString() })}
+            goBack={() => setPage("queue")}
+            rerun={(job) => runJob(createRerunJob(job, settings))}
           />
         )}
         {page === "settings" && (
@@ -435,7 +447,7 @@ function Sidebar({ page, setPage }: { page: Page; setPage: (page: Page) => void 
         <img className="sidebar-mic" src={assets.mic} alt="" />
       </div>
       <footer>
-        <div>v1.0.0 <span className="green-dot" /> Güncel</div>
+        <div>v1.1.0 <span className="green-dot" /> Güncel</div>
         <p>Yapan: Mustafa Yılmaz</p>
         <p>© 2026 Mustafa Yılmaz. Tüm hakları saklıdır.</p>
       </footer>
@@ -556,9 +568,11 @@ function QueuePage(props: {
   activeJob?: JobRecord;
   addFiles: () => void;
   runJob: (job: JobRecord) => void;
+  rerunJob: (job: JobRecord) => void;
   clearDone: () => void;
   clearQueue: () => void;
   stopJob: (job: JobRecord) => void;
+  viewResult: (job: JobRecord) => void;
 }) {
   const summary = {
     total: props.jobs.length,
@@ -577,22 +591,24 @@ function QueuePage(props: {
             <button className="ghost-btn danger" onClick={props.clearDone}>Tamamlananları Temizle</button>
           </div>
         </div>
+        <div className="queue-table-scroll" role="region" aria-label="Dönüştürme işleri">
         <div className="queue-head"><span>Dosya Adı</span><span>Durum</span><span>Ayarlar</span><span>İlerleme</span><span>Kalan Süre</span><span>İşlemler</span></div>
         {props.jobs.length === 0 && <div className="empty-state">Henüz dosya eklenmedi. Başlamak için Dosya Seç düğmesine basın.</div>}
         {props.jobs.map((job) => (
-          <div className={`job-row ${props.selectedId === job.id ? "selected" : ""}`} key={job.id} onClick={() => props.setSelectedId(job.id)}>
-            <div className="file-cell"><img src={job.format === "MP4" || job.format === "MOV" || job.format === "AVI" || job.format === "MKV" ? assets.file : assets.audio} alt="" /><div><b title={job.name}>{job.name}</b><p>{job.format} • {job.duration} • {job.sizeText}</p></div></div>
-            <StatusPill status={job.status} />
-            <div className="small-lines"><span>{job.quality}</span><span>{job.language}</span></div>
-            <div><b>{job.progress}%</b><div className="progress"><i style={{ width: `${job.progress}%` }} /></div></div>
-            <div>{job.remaining}</div>
-            <div className="row-actions">
-              {job.status === "İşleniyor" ? <button className="icon-btn" onClick={(e) => { e.stopPropagation(); props.stopJob(job); }}><SvgIcon name="pause" /></button> : <button className="icon-btn" onClick={(e) => { e.stopPropagation(); props.runJob(job); }}><SvgIcon name="play" /></button>}
-              <button className="icon-btn" onClick={(e) => { e.stopPropagation(); props.runJob({ ...job, id: crypto.randomUUID(), status: "Bekliyor", progress: 0, transcript: "", outputFiles: {}, createdAt: new Date().toISOString() }); }}><SvgIcon name="refresh" /></button>
+          <div className={`job-row ${props.selectedId === job.id ? "selected" : ""}`} data-job-id={job.id} data-status={job.status} key={job.id} tabIndex={0} onClick={() => props.setSelectedId(job.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); props.setSelectedId(job.id); } }}>
+            <div className="job-cell file-cell" data-label="Dosya"><img src={job.format === "MP4" || job.format === "MOV" || job.format === "AVI" || job.format === "MKV" ? assets.file : assets.audio} alt="" /><div><b title={job.name}>{job.name}</b><p>{job.format} • {job.duration} • {job.sizeText}</p></div></div>
+            <div className="job-cell" data-label="Durum"><StatusPill status={job.status} /></div>
+            <div className="job-cell small-lines" data-label="Ayarlar"><span>{job.quality}</span><span>{job.language}</span></div>
+            <div className="job-cell" data-label="İlerleme"><b className="job-progress-label">{formatProgress(job.progress, job.status)}</b><div className="progress" role="progressbar" aria-label={`${job.name} ilerleme`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressValue(job.progress, job.status)}><i style={{ width: `${progressValue(job.progress, job.status)}%` }} /></div></div>
+            <div className="job-cell remaining-cell" data-label="Kalan Süre">{job.remaining}</div>
+            <div className="job-cell row-actions" data-label="İşlemler">
+              {job.status === "Tamamlandı" ? <button className="ghost-btn view-result-btn" disabled={!job.transcript?.trim()} title={!job.transcript?.trim() ? "Bu eski kayıtta transkript metni saklanmamış." : undefined} onClick={(event) => { event.stopPropagation(); props.viewResult(job); }}><SvgIcon name="file" /> Sonucu Görüntüle</button> : job.status === "İşleniyor" ? <button className="icon-btn" aria-label="Dönüştürmeyi durdur" onClick={(event) => { event.stopPropagation(); props.stopJob(job); }}><SvgIcon name="pause" /></button> : <button className="icon-btn" aria-label="Dönüştürmeyi başlat" onClick={(event) => { event.stopPropagation(); props.runJob(job); }}><SvgIcon name="play" /></button>}
+              <button className="icon-btn" aria-label="Yeni ayarlarla yeniden dönüştür" onClick={(event) => { event.stopPropagation(); props.rerunJob(job); }}><SvgIcon name="refresh" /></button>
             </div>
-            {props.selectedId === job.id && <div className="job-detail">Aynı dosyayı farklı kalite veya dil ayarlarıyla yeniden dönüştürebilirsiniz.</div>}
+            {props.selectedId === job.id && <div className="job-detail">{job.status === "Tamamlandı" && !job.transcript?.trim() ? "Bu kayıtta transkript metni bulunmuyor; kaydedilmiş metin olmadan sonuç yeniden açılamaz." : "Aynı dosyayı farklı kalite veya dil ayarlarıyla yeniden dönüştürebilirsiniz."}</div>}
           </div>
         ))}
+        </div>
         <div className="tip-card"><SvgIcon name="info" /> İpucu: Daha hızlı sonuçlar için “Hızlı”, daha yüksek doğruluk için “Yüksek Doğruluk” ayarını seçebilirsiniz.</div>
       </div>
       <aside className="queue-side">
@@ -606,12 +622,13 @@ function QueuePage(props: {
           <h3>Aktif İşlem</h3>
           {props.activeJob ? (
             <>
-              <b>{props.activeJob.name}</b>
-              <p>{props.activeJob.status} • %{props.activeJob.progress}</p>
-              <div className="progress large"><i style={{ width: `${props.activeJob.progress}%` }} /></div>
+              <b className="active-file-name" title={props.activeJob.name}>{props.activeJob.name}</b>
+              <p>{props.activeJob.status} • <span className="active-progress-label">{formatProgress(props.activeJob.progress, props.activeJob.status)}</span></p>
+              <div className="progress large" role="progressbar" aria-label="Aktif işlem ilerleme" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressValue(props.activeJob.progress, props.activeJob.status)}><i style={{ width: `${progressValue(props.activeJob.progress, props.activeJob.status)}%` }} /></div>
               <AudioPlayer job={props.activeJob} compact />
               <dl><dt>Kalite</dt><dd>{props.activeJob.quality}</dd><dt>Dil</dt><dd>{props.activeJob.language}</dd><dt>Kalan</dt><dd>{props.activeJob.remaining}</dd></dl>
-              <button className="ghost-btn block" onClick={() => props.stopJob(props.activeJob!)}>İşlemeyi Durdur</button>
+              {props.activeJob.status === "İşleniyor" && <button className="ghost-btn block" onClick={() => props.stopJob(props.activeJob!)}>İşlemeyi Durdur</button>}
+              {props.activeJob.status === "Tamamlandı" && <button className="ghost-btn block view-result-btn" disabled={!props.activeJob.transcript?.trim()} title={!props.activeJob.transcript?.trim() ? "Bu eski kayıtta transkript metni saklanmamış." : undefined} onClick={() => props.viewResult(props.activeJob!)}>Sonucu Görüntüle</button>}
             </>
           ) : <p>Aktif dosya yok.</p>}
         </div>
@@ -620,10 +637,17 @@ function QueuePage(props: {
   );
 }
 
-function ResultPage({ job, exportCurrent, rerun }: { job?: JobRecord; exportCurrent: (type: "pdf" | "docx" | "txt") => void; rerun: (job: JobRecord) => void }) {
+type SeekRequest = { id: number; jobId: string; seconds: number };
+
+function ResultPage({ job, exportCurrent, rerun, goBack }: { job?: JobRecord; exportCurrent: (type: "pdf" | "docx" | "txt") => void; rerun: (job: JobRecord) => void; goBack: () => void }) {
+  const [seekRequest, setSeekRequest] = useState<SeekRequest>();
+  const seekSequence = useRef(0);
+  const lines = useMemo(() => transcriptLines(job?.transcript || "", job?.segments), [job?.transcript, job?.segments]);
+  useEffect(() => { setSeekRequest(undefined); }, [job?.id]);
   if (!job) return <section className="page"><div className="glass-card empty-state">Henüz sonuç yok.</div></section>;
   return (
     <section className="page result-page">
+      <div className="result-navigation"><button className="ghost-btn" onClick={goBack}><SvgIcon name="history" /> Geçmişe Dön</button></div>
       <div className="result-hero glass-card">
         <div className="file-badge"><img src={assets.audio} alt="" /></div>
         <div className="result-info">
@@ -636,13 +660,14 @@ function ResultPage({ job, exportCurrent, rerun }: { job?: JobRecord; exportCurr
           <button onClick={() => exportCurrent("txt")}><img src={assets.txt} alt="" /> TXT İndir</button>
         </div>
       </div>
-      <AudioPlayer job={job} />
+      {job.warning && <p className="result-warning" role="status"><SvgIcon name="warning" /> {job.warning}</p>}
+      <AudioPlayer job={job} seekRequest={seekRequest} />
       <div className="transcript-card glass-card">
         <div className="section-head"><h2>Döküm (Transkript)</h2><button className="ghost-btn" onClick={() => navigator.clipboard.writeText(job.transcript || "")}><SvgIcon name="copy" /> Tümünü Kopyala</button></div>
-        <pre>{job.transcript || "Metin henüz hazır değil."}</pre>
+        <pre aria-label="Transkript metni">{job.transcript ? lines.map((line, index) => <React.Fragment key={`${job.id}-${index}`}><span className="transcript-line">{line.timestamp ? <>{line.leading}<button className="transcript-timestamp" type="button" data-seconds={line.seconds} aria-label={`${line.timestamp} konumuna git`} title="Sesi bu konuma getir" onClick={() => setSeekRequest({ id: ++seekSequence.current, jobId: job.id, seconds: line.seconds! })}>{line.timestamp}</button>{line.separator}{line.text}</> : line.text}</span>{index < lines.length - 1 ? "\n" : ""}</React.Fragment>) : "Metin henüz hazır değil."}</pre>
       </div>
       <div className="bottom-grid">
-        <div className="glass-card quality-card"><h3>Çıktı Kalitesi</h3><span>UTF-8</span><span>Türkçe karakter uyumlu</span><span>Zaman damgalı</span><p>Metin dosyası UTF-8 kodlamasıyla oluşturulur.</p></div>
+        <div className="glass-card quality-card"><h3>Çıktı Kalitesi</h3><span>UTF-8</span><span>Türkçe karakter uyumlu</span><span>{lines.some((line) => line.timestamp) ? "Zaman damgalı" : "Düz metin"}</span><p>Metin dosyası UTF-8 kodlamasıyla oluşturulur.</p></div>
         <div className="glass-card rerun-card"><h3>Yeniden Dönüştür</h3><p>Aynı dosyayı farklı kalite modlarıyla yeniden dönüştürebilirsiniz. Önceki sonuçlar silinmeden saklanır.</p><button className="big-convert" onClick={() => rerun(job)}><SvgIcon name="refresh" /> Aynı Dosyayı Yeniden Dönüştür</button></div>
       </div>
     </section>
@@ -672,15 +697,17 @@ function HelpPage() {
     ["Ses oynatıcı", "Play, 10 saniye ileri/geri ve ses seviyesi kontrollerini kullanın."],
     ["Koyu tema", "Ayarlar ekranından tema ve ses efektlerini değiştirebilirsiniz."],
     ["Sık karşılaşılan sorunlar", "Dosya okunamazsa farklı dosya deneyin; YouTube için bağlantınızı kontrol edin."],
-    ["Uygulama bilgisi", "My Sesi Metne Dönüştürme v1.0.0. Yapan: Mustafa Yılmaz. © 2026 Mustafa Yılmaz."]
+    ["Uygulama bilgisi", "My Sesi Metne Dönüştürme v1.1.0. Yapan: Mustafa Yılmaz. © 2026 Mustafa Yılmaz."]
   ];
   return <section className="page help-grid">{cards.map(([title, text]) => <div className="glass-card help-card" key={title}><SvgIcon name="info" /><h3>{title}</h3><p>{text}</p></div>)}</section>;
 }
 
-function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: boolean }) {
+function AudioPlayer({ job, compact = false, seekRequest }: { job?: JobRecord; compact?: boolean; seekRequest?: SeekRequest }) {
   const audio = useRef<HTMLAudioElement>(null);
   const playRequest = useRef(0);
   const autoPlay = useRef(false);
+  const preparing = useRef(false);
+  const pendingSeek = useRef<number>();
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -692,12 +719,14 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
   const sourceRef = useRef(sourceKey);
   sourceRef.current = sourceKey;
   const src = prepared?.key === sourceKey ? prepared.url : "";
-  const total = duration || job?.durationSeconds || 0;
+  const total = seekTime(duration) || seekTime(job?.durationSeconds);
   const percent = total > 0 ? Math.min(100, (current / total) * 100) : 0;
 
   useEffect(() => {
     ++playRequest.current;
     autoPlay.current = false;
+    preparing.current = false;
+    pendingSeek.current = undefined;
     setPlaying(false);
     setLoading(false);
     setError("");
@@ -722,6 +751,53 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
     });
   }, [src]);
 
+  useEffect(() => {
+    if (!seekRequest || seekRequest.jobId !== job?.id || !sourceKey) return;
+    pendingSeek.current = seekTime(seekRequest.seconds);
+    setCurrent(seekTime(pendingSeek.current, total));
+    setError("");
+    if (src) applyPendingSeek();
+    else void prepareSource(false);
+  }, [seekRequest?.id, sourceKey]);
+
+  function applyPendingSeek() {
+    const element = audio.current;
+    if (!element || pendingSeek.current === undefined || element.readyState < 1) return;
+    const next = seekTime(pendingSeek.current, element.duration || total);
+    try {
+      element.currentTime = next;
+      pendingSeek.current = undefined;
+      setCurrent(next);
+    } catch {
+      setError("Ses bu konuma getirilemedi. Yeniden deneyin.");
+    }
+  }
+
+  async function prepareSource(playAfterPrepare: boolean) {
+    if (!job || !sourceKey) return;
+    if (playAfterPrepare) autoPlay.current = true;
+    if (preparing.current) return;
+    preparing.current = true;
+    const request = ++playRequest.current;
+    const requestedSource = sourceKey;
+    setLoading(true);
+    try {
+      const url = await window.desktopApi.prepareAudio(job.sourceType, job.sourcePath);
+      if (request !== playRequest.current || sourceRef.current !== requestedSource) return;
+      setPrepared({ key: requestedSource, url });
+    } catch (reason) {
+      if (request === playRequest.current && sourceRef.current === requestedSource) {
+        autoPlay.current = false;
+        setError(readError(reason, "Ses önizlemesi hazırlanamadı. YouTube için internet bağlantınızı kontrol edin."));
+      }
+    } finally {
+      if (request === playRequest.current && sourceRef.current === requestedSource) {
+        preparing.current = false;
+        setLoading(false);
+      }
+    }
+  }
+
   async function togglePlayback() {
     if (!job || !sourceKey || !audio.current || loading) return;
     setError("");
@@ -737,19 +813,7 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
       }
       return;
     }
-    const request = ++playRequest.current;
-    const requestedSource = sourceKey;
-    setLoading(true);
-    try {
-      const url = await window.desktopApi.prepareAudio(job.sourceType, job.sourcePath);
-      if (request !== playRequest.current || sourceRef.current !== requestedSource) return;
-      autoPlay.current = true;
-      setPrepared({ key: requestedSource, url });
-    } catch (reason) {
-      if (request === playRequest.current && sourceRef.current === requestedSource) setError(readError(reason, "Ses önizlemesi hazırlanamadı. YouTube için internet bağlantınızı kontrol edin."));
-    } finally {
-      if (request === playRequest.current && sourceRef.current === requestedSource) setLoading(false);
-    }
+    await prepareSource(true);
   }
 
   return (
@@ -759,11 +823,12 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
         src={src || undefined}
         preload="metadata"
         onLoadedMetadata={() => {
-          setDuration(audio.current?.duration || job?.durationSeconds || 0);
+          setDuration(seekTime(audio.current?.duration) || seekTime(job?.durationSeconds));
           if (audio.current) audio.current.volume = volume;
+          applyPendingSeek();
         }}
-        onDurationChange={() => setDuration(audio.current?.duration || job?.durationSeconds || 0)}
-        onTimeUpdate={() => setCurrent(audio.current?.currentTime || 0)}
+        onDurationChange={() => setDuration(seekTime(audio.current?.duration) || seekTime(job?.durationSeconds))}
+        onTimeUpdate={() => setCurrent(seekTime(audio.current?.currentTime, total))}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => {
