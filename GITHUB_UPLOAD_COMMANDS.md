@@ -1,26 +1,31 @@
-# GitHub yükleme kontrol listesi
+# GitHub güncelleme
 
-Remote zaten tanımlıdır:
+Aktif depo: `https://github.com/mylmaz/My-Sesi-Metne-Donusturme.git`.
 
-```text
-origin  https://github.com/vildancam/My-Sesi-Metne-Donusturme.git
-```
-
-Önce büyük veya gizli dosya olmadığını doğrulayın:
+Mevcut değişiklikleri koruyarak önce kontrol edin:
 
 ```powershell
 git status --short
+git branch -vv
+git remote -v
 git diff --check
-git ls-files | Select-String -Pattern "node_modules|dist-electron-package|Tools/models|\.exe$|\.bin$|\.env$|\.pfx$"
+npm run typecheck
+npm run build
 ```
 
-Ardından değişiklikleri inceleyerek ekleyin:
+İncelenmiş kaynak, belge, script ve küçük görsel dosyalarını açık yollarıyla stage edin. Geçici dosya, kişisel dosya, token/anahtar, EXE/DLL, Whisper modeli, test medyası ve build klasörü eklemeyin. Stage edilen içeriği doğrulayın:
 
 ```powershell
-git add .
-git status --short
-git commit -m "fix: improve transcription workflow, ui layout, cancellation and packaging"
+git diff --cached --stat
+git diff --cached --name-only
+git commit -m "fix: resolve drag drop youtube audio transcription and offline packaging"
 git push origin main
+git fetch origin
+git status -sb
+git rev-parse HEAD
+git rev-parse origin/main
 ```
 
-Whisper modeli ve installer normal Git commit'ine eklenmez. Tercihen GitHub Releases kullanın; LFS kullanılacaksa önce `git lfs install` çalıştırın. Force push yapmayın.
+Dal `main` değilse doğrulanan mevcut dal adını kullanın. Kullanıcı çalışmalarını silmeyin, reset veya force push yapmayın. Uzak dal ilerlediyse önce farklılıkları inceleyin ve güvenli birleştirme yapın. Push kimlik doğrulaması isterse GitHub hesabını Git/credential manager üzerinden yetkilendirin; tokenı kaynak dosyasına veya komut çıktısına yazmayın.
+
+Model ve kurulum normal Git commit'ine eklenmez. Setup için GitHub Release eki kullanılabilir; bu çalışma otomatik olarak Release yayımlamaz. Yeniden dağıtılan araç/model lisansları `Tools/README.md`, kaynak/sürüm/hash bilgileri `Tools/tools-lock.json` içinde tutulur.

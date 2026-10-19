@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "binaryVersion": "n8.1.3-18-g46d899d7a0-20261017",
+  "binaryRelease": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-17-20-51",
+  "ffmpegCommit": "46d899d7a0",
+  "recipesCommit": "63ac3265b0789ea16c7b1f8351cd2ad195a28722",
+  "archives": [
+    {
+      "file": "ffmpeg-46d899d7a0.tar.gz",
+      "url": "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/46d899d7a0",
+      "sha256": "117d66e13ff5fdda17dcd8756a1c061af9c3d8a8ca01d461dd52b76bae8be6e1"
+    },
+    {
+      "file": "FFmpeg-Builds-63ac3265.tar.gz",
+      "url": "https://codeload.github.com/BtbN/FFmpeg-Builds/tar.gz/63ac3265b0789ea16c7b1f8351cd2ad195a28722",
+      "sha256": "4fd8856d5b207fce5c870a690aefc9a72b9a1943cfc79df8d5d327ec4612c9d2"
+    }
+  ],
+  "dependencySources": {
+    "upstreamDownloader": "https://github.com/BtbN/FFmpeg-Builds/blob/63ac3265b0789ea16c7b1f8351cd2ad195a28722/download.sh",
+    "recipes": "https://github.com/BtbN/FFmpeg-Builds/tree/63ac3265b0789ea16c7b1f8351cd2ad195a28722/scripts.d",
+    "command": "./download.sh",
+    "output": ".cache/downloads",
+    "requirements": "Docker plus a bash-capable host, as required by the fixed upstream downloader"
+  }
+}

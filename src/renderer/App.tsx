@@ -13,8 +13,8 @@ const assets = {
   word: new URL("./assets/word.png", import.meta.url).href,
   txt: new URL("./assets/txt.png", import.meta.url).href,
   flagTr: new URL("./assets/flag-tr.png", import.meta.url).href,
-  flagKu: new URL("./assets/flag-ku.png", import.meta.url).href,
-  flagEn: new URL("./assets/flag-en.png", import.meta.url).href
+  flagEn: new URL("./assets/flag-en.png", import.meta.url).href,
+  flagDe: new URL("./assets/flag-de.png", import.meta.url).href
 };
 
 type IconName =
@@ -28,7 +28,6 @@ type IconName =
   | "download"
   | "file"
   | "forward10"
-  | "gift"
   | "help"
   | "history"
   | "home"
@@ -55,8 +54,8 @@ const qualities: { label: Quality; detail: string; icon: IconName }[] = [
 const languages: { label: Language; icon?: string; symbol?: IconName }[] = [
   { label: "Otomatik", symbol: "magic" },
   { label: "Türkçe", icon: assets.flagTr },
-  { label: "Kürtçe", icon: assets.flagKu },
-  { label: "İngilizce", icon: assets.flagEn }
+  { label: "İngilizce", icon: assets.flagEn },
+  { label: "Almanca", icon: assets.flagDe }
 ];
 
 const defaultSettings: AppSettings = {
@@ -85,7 +84,6 @@ function SvgIcon({ name, className = "" }: { name: IconName; className?: string 
       {name === "copy" && <path {...common} d="M9 9h10v10H9zM5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" />}
       {name === "info" && <path {...common} d="M12 16v-5M12 8h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />}
       {name === "magic" && <path {...common} d="m5 19 9-9M13 4l.7 2.1L16 7l-2.3.9L13 10l-.7-2.1L10 7l2.3-.9L13 4ZM19 12l.4 1.2 1.2.4-1.2.4-.4 1.2-.4-1.2-1.2-.4 1.2-.4L19 12ZM6 4l.5 1.5L8 6l-1.5.5L6 8l-.5-1.5L4 6l1.5-.5L6 4Z" />}
-      {name === "gift" && <path {...common} d="M20 12v8H4v-8M3 8h18v4H3zM12 8v12M12 8H8.5a2 2 0 1 1 0-4C11 4 12 8 12 8Zm0 0h3.5a2 2 0 1 0 0-4C13 4 12 8 12 8Z" />}
       {name === "play" && <path fill="currentColor" d="M8 5.8v12.4c0 .8.9 1.3 1.6.8l9-6.2a1 1 0 0 0 0-1.6l-9-6.2A1 1 0 0 0 8 5.8Z" />}
       {name === "pause" && <path fill="currentColor" d="M7 5h3.2v14H7zm6.8 0H17v14h-3.2z" />}
       {name === "back10" && <><path {...common} d="M8 7H4V3" /><path {...common} d="M4.8 7.2A8 8 0 1 1 4 12" /><text x="8" y="15.5" fontSize="7" fontWeight="800" fill="currentColor">10</text></>}
@@ -118,18 +116,24 @@ function App() {
   const [page, setPage] = useState<Page>("home");
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string>("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [youtubeInfo, setYoutubeInfo] = useState<YouTubeInfo | null>(null);
+  const [youtubeInfoUrl, setYoutubeInfoUrl] = useState("");
+  const [youtubePreview, setYoutubePreview] = useState(false);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [notice, setNotice] = useState("Kullanıma hazır");
+  const youtubeRequest = useRef(0);
+  const noticeTimer = useRef<number>();
 
   useEffect(() => {
-    window.desktopApi.getSettings().then(setSettings).catch(() => setSettings(defaultSettings));
+    window.desktopApi.getSettings().then((saved) => setSettings({ ...saved, defaultLanguage: normalizeLanguage(saved.defaultLanguage) })).catch(() => setSettings(defaultSettings));
     window.desktopApi.getHistory().then((items) => {
       setJobs(items);
       if (items[0]) setSelectedId(items[0].id);
-    }).catch(() => undefined);
+      setHistoryLoaded(true);
+    }).catch((error) => showNotice(readError(error, "Geçmiş okunamadı. Kayıt dosyanız korunuyor.")));
     return window.desktopApi.onProgress((payload) => {
       setJobs((current) => current.map((job) => job.id === payload.id ? {
         ...job,
@@ -144,8 +148,25 @@ function App() {
   useEffect(() => {
     document.body.classList.toggle("transparent-off", !settings.transparentTheme);
     document.body.classList.toggle("no-motion", !settings.animations);
-    void window.desktopApi.saveHistory(jobs);
-  }, [jobs, settings.transparentTheme, settings.animations]);
+    if (historyLoaded) void window.desktopApi.saveHistory(jobs);
+  }, [jobs, historyLoaded, settings.transparentTheme, settings.animations]);
+
+  useEffect(() => {
+    // Cancel the browser's default file navigation even outside the import area.
+    const preventFileNavigation = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files")) {
+        event.preventDefault();
+        if (event.type === "dragover") event.dataTransfer.dropEffect = "copy";
+      }
+    };
+    window.addEventListener("dragover", preventFileNavigation);
+    window.addEventListener("drop", preventFileNavigation);
+    return () => {
+      window.removeEventListener("dragover", preventFileNavigation);
+      window.removeEventListener("drop", preventFileNavigation);
+      window.clearTimeout(noticeTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     document.querySelector(".main-area")?.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
@@ -158,13 +179,30 @@ function App() {
     try {
       const files = await window.desktopApi.chooseMediaFiles();
       addMediaFiles(files);
-    } catch {
-      showNotice("Dosya okunamadı. Lütfen farklı bir dosya deneyin.");
+    } catch (error) {
+      showNotice(readError(error, "Dosya okunamadı. Lütfen farklı bir dosya deneyin."));
+    }
+  }
+
+  async function addDroppedFiles(files: File[]) {
+    const paths = files.map((file) => window.desktopApi.getPathForFile(file)).filter(Boolean);
+    if (!paths.length) {
+      showNotice("Dosya yolu okunamadı. Windows Dosya Gezgini'nden bir ses veya video dosyası bırakın.");
+      return;
+    }
+    try {
+      const result = await window.desktopApi.inspectMediaFiles(paths);
+      addMediaFiles(result.files);
+      if (result.errors.length) showNotice(result.errors.join(" • "));
+      else if (paths.length < files.length) showNotice("Bazı dosyaların yolu okunamadı; uygun dosyalar kuyruğa eklendi.");
+    } catch (error) {
+      showNotice(readError(error, "Bırakılan dosyalar okunamadı. Lütfen ses veya video dosyası seçin."));
     }
   }
 
   function addMediaFiles(files: MediaFile[]) {
     if (!files.length) return;
+    setYoutubePreview(false);
     const created = files.map((file) => newJobFromFile(file, settings));
     setJobs((current) => [...created, ...current]);
     setSelectedId(created[0].id);
@@ -174,32 +212,67 @@ function App() {
 
   async function fetchYoutubeInfo() {
     if (youtubeLoading) return;
+    const url = youtubeUrl.trim();
+    const request = ++youtubeRequest.current;
     setYoutubeLoading(true);
     try {
-      const info = await window.desktopApi.getYouTubeInfo(youtubeUrl);
+      const info = await window.desktopApi.getYouTubeInfo(url);
+      if (request !== youtubeRequest.current) return;
       setYoutubeInfo(info);
+      setYoutubeInfoUrl(url);
+      setYoutubePreview(true);
       showNotice("Video bilgisi alındı.");
     } catch (error) {
-      showNotice(readError(error, "YouTube bağlantısı alınamadı. İnternet bağlantınızı kontrol edin."));
+      if (request === youtubeRequest.current) showNotice(readError(error, "YouTube bağlantısı alınamadı. İnternet bağlantınızı kontrol edin."));
     } finally {
-      setYoutubeLoading(false);
+      if (request === youtubeRequest.current) setYoutubeLoading(false);
     }
   }
 
   async function addYoutubeAndRun() {
     if (youtubeLoading) return;
+    const url = youtubeUrl.trim();
+    const request = ++youtubeRequest.current;
     setYoutubeLoading(true);
     try {
-      const info = youtubeInfo || await window.desktopApi.getYouTubeInfo(youtubeUrl);
+      const info = youtubeInfo && youtubeInfoUrl === url ? youtubeInfo : await window.desktopApi.getYouTubeInfo(url);
+      if (request !== youtubeRequest.current) return;
       setYoutubeInfo(info);
+      setYoutubeInfoUrl(url);
+      setYoutubePreview(true);
       const job = newJobFromYoutube(info, settings);
       setJobs((current) => [job, ...current]);
       setSelectedId(job.id);
       await runJob(job);
     } catch (error) {
-      showNotice(readError(error, "YouTube bağlantısı alınamadı. İnternet bağlantınızı kontrol edin."));
+      if (request === youtubeRequest.current) showNotice(readError(error, "YouTube bağlantısı alınamadı. İnternet bağlantınızı kontrol edin."));
     } finally {
-      setYoutubeLoading(false);
+      if (request === youtubeRequest.current) setYoutubeLoading(false);
+    }
+  }
+
+  function changeYoutubeUrl(url: string) {
+    ++youtubeRequest.current;
+    setYoutubeUrl(url);
+    setYoutubeInfo(null);
+    setYoutubeInfoUrl("");
+    setYoutubePreview(false);
+    setYoutubeLoading(false);
+  }
+
+  function updateSettings(next: AppSettings) {
+    setSettings(next);
+    const languageChanged = next.defaultLanguage !== settings.defaultLanguage;
+    const qualityChanged = next.defaultQuality !== settings.defaultQuality;
+    if (languageChanged || qualityChanged) {
+      setJobs((current) => current.map((job) => job.status === "Bekliyor" ? {
+        ...job,
+        language: languageChanged ? next.defaultLanguage : job.language,
+        quality: qualityChanged ? next.defaultQuality : job.quality
+      } : job));
+    }
+    if (languageChanged) {
+      void window.desktopApi.saveSettings(next).catch((error) => showNotice(readError(error, "Dil ayarı kaydedilemedi.")));
     }
   }
 
@@ -215,6 +288,10 @@ function App() {
   }
 
   async function runJob(job: JobRecord) {
+    if (!jobs.some((item) => item.id === job.id)) {
+      job = { ...job, language: settings.defaultLanguage, quality: settings.defaultQuality };
+    }
+    setJobs((current) => current.some((item) => item.id === job.id) ? current : [job, ...current]);
     playUiSound(settings, "start");
     setPage("queue");
     setSelectedId(job.id);
@@ -277,8 +354,9 @@ function App() {
   }
 
   function showNotice(message: string) {
+    window.clearTimeout(noticeTimer.current);
     setNotice(message);
-    window.setTimeout(() => setNotice("Kullanıma hazır"), 4500);
+    noticeTimer.current = window.setTimeout(() => setNotice("Kullanıma hazır"), 7000);
   }
 
   return (
@@ -289,13 +367,14 @@ function App() {
         {page === "home" && (
           <HomePage
             settings={settings}
-            setSettings={setSettings}
+            setSettings={updateSettings}
             youtubeUrl={youtubeUrl}
-            setYoutubeUrl={setYoutubeUrl}
+            setYoutubeUrl={changeYoutubeUrl}
             youtubeInfo={youtubeInfo}
+            youtubePreview={youtubePreview}
             youtubeLoading={youtubeLoading}
             addFiles={addFiles}
-            addMediaFiles={addMediaFiles}
+            addDroppedFiles={addDroppedFiles}
             fetchYoutubeInfo={fetchYoutubeInfo}
             addYoutubeAndRun={addYoutubeAndRun}
             runAll={runAll}
@@ -323,7 +402,7 @@ function App() {
           />
         )}
         {page === "settings" && (
-          <SettingsPage settings={settings} setSettings={setSettings} saveSettings={saveSettings} resetSettings={resetSettings} />
+          <SettingsPage settings={settings} setSettings={updateSettings} saveSettings={saveSettings} resetSettings={resetSettings} />
         )}
         {page === "help" && <HelpPage />}
       </main>
@@ -374,7 +453,6 @@ function TopBar({ title, subtitle, notice }: { title: string; subtitle: string; 
           <p>{subtitle}</p>
         </div>
       </div>
-      <div className="badge free"><SvgIcon name="gift" /> Ücretsiz / Sınırsız</div>
       <div className="badge ready"><SvgIcon name="magic" /> {notice}</div>
     </header>
   );
@@ -386,26 +464,49 @@ function HomePage(props: {
   youtubeUrl: string;
   setYoutubeUrl: (url: string) => void;
   youtubeInfo: YouTubeInfo | null;
+  youtubePreview: boolean;
   youtubeLoading: boolean;
   addFiles: () => void;
-  addMediaFiles: (files: MediaFile[]) => void;
+  addDroppedFiles: (files: File[]) => void;
   fetchYoutubeInfo: () => void;
   addYoutubeAndRun: () => void;
   runAll: () => void;
   activeJob?: JobRecord;
 }) {
   const { settings, setSettings } = props;
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const previewJob = useMemo(() => props.youtubePreview && props.youtubeInfo ? {
+    ...newJobFromYoutube(props.youtubeInfo, settings),
+    id: `preview:${props.youtubeInfo.url}`
+  } : undefined, [props.youtubePreview, props.youtubeInfo, settings]);
   return (
     <section className="page home-page">
       <div
-        className="drop-zone glass-card"
-        onDragOver={(event) => event.preventDefault()}
+        className={`drop-zone glass-card ${dragging ? "dragging" : ""}`}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          if (event.dataTransfer.types.includes("Files")) {
+            ++dragDepth.current;
+            setDragging(true);
+          }
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (event.dataTransfer.types.includes("Files")) event.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (!dragDepth.current) setDragging(false);
+        }}
         onDrop={(event) => {
           event.preventDefault();
-          const files = Array.from(event.dataTransfer.files)
-            .map((file) => ({ path: (file as File & { path?: string }).path || "", name: file.name, format: file.name.split(".").pop()?.toUpperCase() || "", sizeText: "", duration: "--:--", durationSeconds: 0 }))
-            .filter((file) => file.path);
-          props.addMediaFiles(files);
+          event.stopPropagation();
+          dragDepth.current = 0;
+          setDragging(false);
+          const files = Array.from(event.dataTransfer.files);
+          if (files.length) props.addDroppedFiles(files);
         }}
       >
         <SvgIcon name="cloud" className="upload-icon" />
@@ -435,7 +536,7 @@ function HomePage(props: {
           </div>
         </div>
       </div>
-      <AudioPlayer job={props.activeJob} />
+      <AudioPlayer job={previewJob || props.activeJob} />
       <div className="option-grid">
         <ChoiceCard title="Kalite" items={qualities} selected={settings.defaultQuality} onSelect={(value) => setSettings({ ...settings, defaultQuality: value as Quality })} />
         <LanguageCard selected={settings.defaultLanguage} onSelect={(value) => setSettings({ ...settings, defaultLanguage: value })} />
@@ -527,7 +628,7 @@ function ResultPage({ job, exportCurrent, rerun }: { job?: JobRecord; exportCurr
         <div className="file-badge"><img src={assets.audio} alt="" /></div>
         <div className="result-info">
           <h2>{job.name}</h2>
-          <div className="meta-list"><span>Süre<br /><b>{job.duration}</b></span><span>Kalite<br /><b>{job.quality}</b></span><span>Dil<br /><b>{job.language}</b></span><span>Durum<br /><b>{job.status}</b></span></div>
+          <div className="meta-list"><span>Süre<br /><b>{job.duration}</b></span><span>Kalite<br /><b>{job.quality}</b></span><span>Dil<br /><b>{job.language}</b></span>{job.detectedLanguage && <span>Algılanan dil<br /><b>{job.detectedLanguage}</b></span>}<span>Durum<br /><b>{job.status}</b></span></div>
         </div>
         <div className="download-buttons">
           <button onClick={() => exportCurrent("pdf")}><img src={assets.pdf} alt="" /> PDF İndir</button>
@@ -578,29 +679,84 @@ function HelpPage() {
 
 function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: boolean }) {
   const audio = useRef<HTMLAudioElement>(null);
+  const playRequest = useRef(0);
+  const autoPlay = useRef(false);
   const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [prepared, setPrepared] = useState<{ key: string; url: string } | null>(null);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
-  const src = job?.sourceType === "file" && job.sourcePath ? toFileUrl(job.sourcePath) : "";
+  const sourceKey = job?.sourcePath ? `${job.sourceType}:${job.sourcePath}` : "";
+  const sourceRef = useRef(sourceKey);
+  sourceRef.current = sourceKey;
+  const src = prepared?.key === sourceKey ? prepared.url : "";
   const total = duration || job?.durationSeconds || 0;
   const percent = total > 0 ? Math.min(100, (current / total) * 100) : 0;
 
   useEffect(() => {
+    ++playRequest.current;
+    autoPlay.current = false;
     setPlaying(false);
+    setLoading(false);
+    setError("");
+    setPrepared(null);
     setCurrent(0);
     setDuration(0);
     if (audio.current) {
       audio.current.pause();
       audio.current.currentTime = 0;
     }
-  }, [job?.id, job?.sourcePath]);
+    return () => { ++playRequest.current; };
+  }, [sourceKey]);
+
+  useEffect(() => {
+    if (!src || !autoPlay.current || !audio.current) return;
+    autoPlay.current = false;
+    const request = playRequest.current;
+    void audio.current.play().catch((reason) => {
+      if (request !== playRequest.current) return;
+      setPlaying(false);
+      setError(readError(reason, "Ses oynatılamadı. Yeniden deneyin."));
+    });
+  }, [src]);
+
+  async function togglePlayback() {
+    if (!job || !sourceKey || !audio.current || loading) return;
+    setError("");
+    if (src) {
+      if (!audio.current.paused) {
+        audio.current.pause();
+        return;
+      }
+      try {
+        await audio.current.play();
+      } catch (reason) {
+        setError(readError(reason, "Ses oynatılamadı. Yeniden deneyin."));
+      }
+      return;
+    }
+    const request = ++playRequest.current;
+    const requestedSource = sourceKey;
+    setLoading(true);
+    try {
+      const url = await window.desktopApi.prepareAudio(job.sourceType, job.sourcePath);
+      if (request !== playRequest.current || sourceRef.current !== requestedSource) return;
+      autoPlay.current = true;
+      setPrepared({ key: requestedSource, url });
+    } catch (reason) {
+      if (request === playRequest.current && sourceRef.current === requestedSource) setError(readError(reason, "Ses önizlemesi hazırlanamadı. YouTube için internet bağlantınızı kontrol edin."));
+    } finally {
+      if (request === playRequest.current && sourceRef.current === requestedSource) setLoading(false);
+    }
+  }
 
   return (
-    <div className={`audio-player glass-card ${compact ? "compact" : ""} ${src ? "" : "disabled"}`}>
+    <div className={`audio-player glass-card ${compact ? "compact" : ""} ${sourceKey ? "" : "disabled"}`} aria-busy={loading}>
       <audio
         ref={audio}
-        src={src}
+        src={src || undefined}
         preload="metadata"
         onLoadedMetadata={() => {
           setDuration(audio.current?.duration || job?.durationSeconds || 0);
@@ -615,21 +771,17 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
           setCurrent(audio.current?.duration || 0);
         }}
         onError={() => {
+          if (!src) return;
           setPlaying(false);
           setCurrent(0);
+          setPrepared(null);
+          setError("Ses dosyası açılamadı. Yeniden oynatmayı deneyin.");
         }}
       />
       <div className="audio-controls">
-      <button className="round-play" disabled={!src} onClick={() => {
-        if (!audio.current || !src) return;
-        if (audio.current.paused) {
-          void audio.current.play().catch(() => setPlaying(false));
-        } else {
-          audio.current.pause();
-        }
-      }}>{playing ? <SvgIcon name="pause" /> : <SvgIcon name="play" />}</button>
-      <button className="mini-control" disabled={!src} onClick={() => { if (audio.current) audio.current.currentTime = Math.max(0, audio.current.currentTime - 10); }}><SvgIcon name="back10" /></button>
-      <button className="mini-control" disabled={!src} onClick={() => { if (audio.current) audio.current.currentTime = Math.min(total || audio.current.duration || 0, audio.current.currentTime + 10); }}><SvgIcon name="forward10" /></button>
+      <button className="round-play" aria-label={loading ? "Ses hazırlanıyor" : playing ? "Duraklat" : "Oynat"} disabled={!sourceKey || loading} onClick={() => void togglePlayback()}>{loading ? <SvgIcon name="refresh" /> : playing ? <SvgIcon name="pause" /> : <SvgIcon name="play" />}</button>
+      <button className="mini-control" aria-label="10 saniye geri" disabled={!src} onClick={() => { if (audio.current) audio.current.currentTime = Math.max(0, audio.current.currentTime - 10); }}><SvgIcon name="back10" /></button>
+      <button className="mini-control" aria-label="10 saniye ileri" disabled={!src} onClick={() => { if (audio.current) audio.current.currentTime = Math.min(total || audio.current.duration || 0, audio.current.currentTime + 10); }}><SvgIcon name="forward10" /></button>
       </div>
       <div className="wave">
         <input
@@ -649,9 +801,10 @@ function AudioPlayer({ job, compact = false }: { job?: JobRecord; compact?: bool
           }}
         />
       </div>
-      <span className="audio-time">{src ? `${formatClock(current)} / ${total > 0 ? formatClock(total) : job?.duration || "--:--"}` : "Ses önizleme yalnızca yerel dosyada"}</span>
+      <span className="audio-time">{loading ? "Ses hazırlanıyor…" : sourceKey ? `${formatClock(current)} / ${total > 0 ? formatClock(total) : job?.duration || "--:--"}` : "Önizleme için dosya veya video seçin"}</span>
       <SvgIcon name="sound" className="sound-icon" />
       <input className="volume-range" aria-label="Ses seviyesi" type="range" min="0" max="1" step="0.01" value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); if (audio.current) audio.current.volume = next; }} />
+      {error && <p className="audio-error" role="alert">{error}</p>}
     </div>
   );
 }
@@ -730,7 +883,7 @@ function newJobFromYoutube(info: YouTubeInfo, settings: AppSettings): JobRecord 
     format: "YouTube",
     sizeText: "-",
     duration: info.duration,
-    durationSeconds: 0,
+    durationSeconds: info.durationSeconds || 0,
     quality: settings.defaultQuality,
     language: settings.defaultLanguage,
     status: "Bekliyor",
@@ -745,8 +898,8 @@ function newJobFromYoutube(info: YouTubeInfo, settings: AppSettings): JobRecord 
   };
 }
 
-function toFileUrl(filePath: string) {
-  return `file:///${filePath.replace(/\\/g, "/").replace(/^\/+/, "")}`;
+function normalizeLanguage(language: unknown): Language {
+  return languages.some((item) => item.label === language) ? language as Language : "Otomatik";
 }
 
 function formatClock(seconds: number) {

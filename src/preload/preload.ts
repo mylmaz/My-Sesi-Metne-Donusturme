@@ -1,7 +1,16 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 contextBridge.exposeInMainWorld("desktopApi", {
   chooseMediaFiles: () => ipcRenderer.invoke("files:choose"),
+  getPathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
+  inspectMediaFiles: (paths: string[]) => ipcRenderer.invoke("files:inspect", paths),
+  prepareAudio: (sourceType: "file" | "youtube", sourcePath: string) => ipcRenderer.invoke("audio:prepare", sourceType, sourcePath),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings: unknown) => ipcRenderer.invoke("settings:save", settings),
   resetSettings: () => ipcRenderer.invoke("settings:reset"),

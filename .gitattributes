@@ -2,9 +2,13 @@
 *.ts text eol=lf
 *.tsx text eol=lf
 *.css text eol=lf
+*.cjs text eol=lf
 *.json text eol=lf
 *.md text eol=lf
 *.ps1 text eol=crlf
+
+# Keep upstream license bytes and whitespace unchanged for SHA256 verification.
+Tools/licenses/** -text -whitespace
 
 # Büyük çalışma zamanı dosyaları normal Git geçmişine eklenmemelidir.
 # GitHub Releases yerine LFS seçilirse bu kurallar güvenli varsayılan sağlar.

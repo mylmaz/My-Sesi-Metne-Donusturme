@@ -1,5 +1,5 @@
 export type Quality = "Hızlı" | "Dengeli" | "Yüksek Doğruluk";
-export type Language = "Otomatik" | "Türkçe" | "Kürtçe" | "İngilizce";
+export type Language = "Otomatik" | "Türkçe" | "İngilizce" | "Almanca";
 export type JobStatus = "Bekliyor" | "İşleniyor" | "Tamamlandı" | "Hata" | "İptal Edildi" | "Durduruldu";
 
 export interface AppSettings {
@@ -25,6 +25,7 @@ export interface YouTubeInfo {
   url: string;
   title: string;
   duration: string;
+  durationSeconds?: number;
   channel: string;
   thumbnail: string;
 }
@@ -40,6 +41,7 @@ export interface JobRecord {
   durationSeconds: number;
   quality: Quality;
   language: Language;
+  detectedLanguage?: string;
   status: JobStatus;
   stage: string;
   progress: number;
@@ -66,6 +68,9 @@ export interface ExportPayload {
 
 export interface DesktopApi {
   chooseMediaFiles(): Promise<MediaFile[]>;
+  getPathForFile(file: File): string;
+  inspectMediaFiles(paths: string[]): Promise<{ files: MediaFile[]; errors: string[] }>;
+  prepareAudio(sourceType: "file" | "youtube", sourcePath: string): Promise<string>;
   getSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<AppSettings>;
   resetSettings(): Promise<AppSettings>;

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "model": {
+    "name": "Whisper Large-v2 q5_0",
+    "file": "models/ggml-large-v2-q5_0.bin",
+    "size": 1080732091,
+    "sha256": "3a214837221e4530dbc1fe8d734f302af393eb30bd0ed046042ebf4baf70f6f2"
+  },
+  "versions": {
+    "whisper": "1.9.2",
+    "ffmpeg": "n8.1.3-18-g46d899d7a0 LGPL shared",
+    "ytdlp": "2026.08.19",
+    "deno": "2.9.7",
+    "vcredist": "14.44.35211.0"
+  },
+  "assets": [
+    {
+      "destination": "build/downloads/ffmpeg-lgpl-shared.zip",
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-17-20-51/ffmpeg-n8.1.3-18-g46d899d7a0-win64-lgpl-shared-8.1.zip",
+      "id": "ffmpeg",
+      "sha256": "a5b362ae7ddacb2d97974cb8dc1fa84339a77d996c274cf3fad32605f40288be"
+    },
+    {
+      "destination": "build/downloads/whisper-v1.9.2.zip",
+      "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip",
+      "id": "whisper",
+      "sha256": "49dcc16de826f20bd53d44f947a1ae49dfa81f86cad67a64d80820cb192d674a"
+    },
+    {
+      "destination": "build/downloads/deno-v2.9.7.zip",
+      "url": "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-pc-windows-msvc.zip",
+      "id": "deno",
+      "sha256": "a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238"
+    },
+    {
+      "destination": "Tools/yt-dlp/yt-dlp.exe",
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe",
+      "id": "ytdlp",
+      "sha256": "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
+    },
+    {
+      "destination": "Tools/models/ggml-large-v2-q5_0.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v2-q5_0.bin",
+      "id": "model",
+      "sha256": "3a214837221e4530dbc1fe8d734f302af393eb30bd0ed046042ebf4baf70f6f2"
+    },
+    {
+      "destination": "build/downloads/vc_redist.x64.exe",
+      "url": "https://download.visualstudio.microsoft.com/download/pr/990c720a-46ce-4dc7-87b9-c2eb615d34b9/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe",
+      "id": "vcredist",
+      "sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b"
+    },
+    {
+      "destination": "Tools/licenses/Whisper-model-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/openai/whisper/v20250625/LICENSE",
+      "id": "Whisper-model-LICENSE.txt",
+      "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
+    },
+    {
+      "destination": "Tools/licenses/Deno-V8-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/denoland/rusty_v8/2f588046bf45a7b9adeda3ed0f0e881d38e6f3f5/LICENSE",
+      "id": "Deno-V8-LICENSE.txt",
+      "sha256": "1c6356fb751d45f0c53093ebf8a7f5e580e802f51999178e19d60f3ec39e147d"
+    },
+    {
+      "destination": "Tools/licenses/whisper-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.2/LICENSE",
+      "id": "whisper-LICENSE.txt",
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+    },
+    {
+      "destination": "Tools/licenses/Deno-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/denoland/deno/v2.9.7/LICENSE.md",
+      "id": "Deno-LICENSE.txt",
+      "sha256": "f62497fffecc0852960c8d3e6934b9db86d16396e9b604072e923892cae3a588"
+    },
+    {
+      "destination": "Tools/licenses/yt-dlp-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.08.19/LICENSE",
+      "id": "yt-dlp-LICENSE.txt",
+      "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
+    },
+    {
+      "destination": "Tools/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt",
+      "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.08.19/THIRD_PARTY_LICENSES.txt",
+      "id": "yt-dlp-THIRD_PARTY_LICENSES.txt",
+      "sha256": "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7"
+    },
+    {
+      "id": "FFmpeg-GPLv3-license",
+      "destination": "Tools/licenses/ffmpeg/COPYING.GPLv3.txt",
+      "url": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/46d899d7a0/COPYING.GPLv3",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    }
+  ]
+}

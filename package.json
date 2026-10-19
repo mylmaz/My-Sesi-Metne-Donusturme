@@ -14,7 +14,9 @@
     "preview": "vite preview --host 127.0.0.1",
     "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
     "test:electron": "npm run build && set ELECTRON_RUN_AS_NODE=&& electron scripts/electron-smoke.cjs",
-    "dist": "npm run build && electron-builder --win nsis --x64 --publish never"
+    "dist": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "tools:prepare": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-tools.ps1",
+    "tools:validate": "node scripts/validate-tools.cjs"
   },
   "dependencies": {
     "docx": "^9.1.1",
@@ -23,26 +25,27 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
     "@types/node": "^22.10.5",
     "@types/pdfkit": "^0.13.9",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "electron": "^34.0.2",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "26.17.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "wait-on": "^8.0.1"
   },
   "build": {
+    "allowMissingDependencies": false,
     "appId": "com.mustafayilmaz.mysesimetnedonusturme",
     "productName": "My Sesi Metne Donusturme",
     "artifactName": "My-Sesi-Metne-Donusturme-Setup-x64.${ext}",
     "directories": {
       "output": "dist-electron-package"
     },
-    "compression": "maximum",
+    "compression": "normal",
     "asar": true,
     "files": [
       "dist/**/*",
@@ -51,31 +54,62 @@
     ],
     "extraResources": [
       {
-        "from": "Tools/ffmpeg/ffmpeg.exe",
-        "to": "Tools/ffmpeg/ffmpeg.exe"
+        "from": "Tools/ffmpeg",
+        "to": "Tools/ffmpeg",
+        "filter": [
+          "*.exe",
+          "*.dll"
+        ]
       },
       {
-        "from": "Tools/ffmpeg/ffprobe.exe",
-        "to": "Tools/ffmpeg/ffprobe.exe"
+        "from": "Tools/yt-dlp",
+        "to": "Tools/yt-dlp",
+        "filter": [
+          "yt-dlp.exe"
+        ]
       },
       {
-        "from": "Tools/yt-dlp/yt-dlp.exe",
-        "to": "Tools/yt-dlp/yt-dlp.exe"
+        "from": "Tools/deno",
+        "to": "Tools/deno",
+        "filter": [
+          "deno.exe"
+        ]
       },
       {
         "from": "Tools/whisper",
         "to": "Tools/whisper",
         "filter": [
           "whisper-cli.exe",
-          "whisper.dll",
-          "ggml.dll",
-          "ggml-base.dll",
-          "ggml-cpu.dll"
+          "*.dll"
         ]
       },
       {
-        "from": "Tools/models/ggml-large-v2-q5_k.bin",
-        "to": "Tools/models/ggml-large-v2-q5_k.bin"
+        "from": "Tools/models/ggml-large-v2-q5_0.bin",
+        "to": "Tools/models/ggml-large-v2-q5_0.bin"
+      },
+      {
+        "from": "Tools/licenses",
+        "to": "Tools/licenses"
+      },
+      {
+        "from": "Tools/runtime-manifest.json",
+        "to": "Tools/runtime-manifest.json"
+      },
+      {
+        "from": "Tools/tools-lock.json",
+        "to": "Tools/tools-lock.json"
+      },
+      {
+        "from": "Tools/THIRD_PARTY_NOTICES.md",
+        "to": "Tools/THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "Tools/ffmpeg-sources.json",
+        "to": "Tools/ffmpeg-sources.json"
+      },
+      {
+        "from": "Tools/README.md",
+        "to": "Tools/README.md"
       },
       {
         "from": "resources",
@@ -105,9 +139,17 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": true,
+      "deleteAppDataOnUninstall": false,
       "shortcutName": "My Sesi Metne Donusturme",
-      "uninstallDisplayName": "My Sesi Metne Donusturme"
-    }
+      "uninstallDisplayName": "My Sesi Metne Donusturme",
+      "runAfterFinish": true,
+      "installerLanguages": [
+        "tr_TR",
+        "en_US"
+      ]
+    },
+    "beforePack": "./scripts/validate-tools.cjs",
+    "afterPack": "./scripts/validate-packaged-tools.cjs",
+    "afterAllArtifactBuild": "./scripts/copy-installer.cjs"
   }
 }

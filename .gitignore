@@ -29,6 +29,9 @@ Tools/whisper/*.exe
 Tools/whisper/*.dll
 Tools/models/*.bin
 Tools/yt-dlp/*.exe
+Tools/deno/*.exe
+Tools/**/*.download
+desktop.ini
 Görsel.png
 /*.png
 *.blockmap

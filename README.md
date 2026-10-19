@@ -1,122 +1,104 @@
 # My Sesi Metne Dönüştürme
 
-Windows x64 için yerel ses, video ve YouTube transkripsiyon uygulaması. Yerel dosyalar cihazdan dışarı gönderilmez ve ücretli API kullanılmaz. İnternet yalnızca YouTube içeriğine erişmek için gerekir.
+Windows 10/11 x64 için Electron 34, React 18 ve TypeScript ile geliştirilmiş yerel ses/video transkripsiyon uygulaması. Yerel medya, Whisper modeli ve dışa aktarma işlemleri kurulumdan itibaren çevrimdışı çalışır. YouTube bilgisi ve sesi almak için internet gerekir.
 
-- Geliştirici: Mustafa Yılmaz
-- Sürüm: 1.0.0
-- Lisans: MIT
+Geliştirici: Mustafa Yılmaz · Sürüm: 1.0.0 · Uygulama kaynak lisansı: MIT
 
 ## Özellikler
 
-- MP3, WAV, M4A, MP4, WEBM, MPEG, MPGA, MOV, AVI, MKV, FLAC, AAC, OGG, OPUS, WMA ve WMV desteği
-- YouTube video bilgisi alma ve sesi indirerek dönüştürme
-- Whisper Large-v2 ile tamamen yerel transkripsiyon
-- Otomatik, Türkçe, Kürtçe ve İngilizce dil seçenekleri
-- Hızlı (Beam 4), Dengeli (Beam 6) ve Yüksek Doğruluk (Beam 8) modları
-- Gerçek işlem iptali ve Windows child-process ağacı sonlandırma
-- UTF-8 TXT, Türkçe karakter uyumlu PDF ve DOCX çıktısı
-- Açık renkli, cam efektli Electron + React arayüz
+- Dosya Seç ve Windows dosya sürükle-bırak ile çoklu medya ekleme; iki yöntem aynı doğrulama ve FFprobe akışını kullanır.
+- MP3, WAV, M4A, MP4, WEBM, MPEG, MPGA, MOV, AVI, MKV, FLAC, AAC, OGG, OPUS, WMA ve WMV desteği.
+- YouTube video bilgisi, isteğe bağlı ses önizlemesi ve gerçek ses indirme/Whisper transkripsiyonu.
+- Yerel ve YouTube kaynaklarında oynat/duraklat, 10 saniye ileri/geri, zaman, ilerleme ve ses seviyesi kontrolleri.
+- Whisper **Large-v2 q5_0**; tüm kalite seçenekleri aynı modeli kullanır: Hızlı Beam 4, Dengeli Beam 6, Yüksek Doğruluk Beam 8.
+- Her iki ekranda aynı dil sırası: **Otomatik, Türkçe, İngilizce, Almanca**. Seçim kaydedilir ve ekranlar arasında paylaşılır.
+- Otomatik mod `-l auto` kullanır, dil yönlendiren başlangıç metni göndermez; modelin desteklediği diller arasından seçim yapar. Gerçek algılama sonucu varsa sonuç ekranında dil kodu gösterilir. Desteklenmeyen diller için doğruluk garantisi yoktur.
+- İşlem kuyruğu, aşama/ilerleme, gerçek süreç iptali, geçmiş ve ayarlar.
+- UTF-8 TXT, Türkçe karakter destekli PDF ve DOCX dışa aktarma.
 
-## Aktif proje yapısı
+Mevcut cam efektli tasarım korunmuştur. Almanca kartının görseli proje klasöründe bulunan `Almanca.png` dosyasından içeriği değiştirilmeden alınmıştır. Eski kayıtlı Kürtçe varsayılanı Otomatik seçimine taşınır; eski transkript içerikleri korunur.
 
-```text
-src/main       Electron ana süreç, FFmpeg/Whisper/yt-dlp ve export işlemleri
-src/preload    İzole renderer için güvenli IPC köprüsü
-src/renderer   React + TypeScript kullanıcı arayüzü
-resources      Electron ve NSIS uygulama ikonu
-Tools          Harici çalışma zamanı araçları ve yerel model
-scripts        Electron doğrulama ve eski sürüme ait yardımcı testler
-```
-
-`src/MySesiMetneDonusturme` ve kökteki eski installer dosyaları önceki WPF sürümüne aittir. Aktif uygulama Electron sürümüdür; geçmiş sürüm doğrulaması yapılmadan bu dosyalar silinmemelidir.
-
-## Gereksinimler
-
-- Windows 10/11 x64
-- Node.js 20 veya daha yeni LTS
-- npm
-- Paketleme için yeterli boş disk alanı (en az 5 GB önerilir)
-
-## Çalışma zamanı dosyaları
-
-Aşağıdaki dosyalar geliştirme ortamında bulunmalıdır:
+## Aktif proje
 
 ```text
-Tools/ffmpeg/ffmpeg.exe
-Tools/ffmpeg/ffprobe.exe
-Tools/yt-dlp/yt-dlp.exe
-Tools/whisper/whisper-cli.exe
-Tools/whisper/whisper.dll
-Tools/whisper/ggml.dll
-Tools/whisper/ggml-base.dll
-Tools/whisper/ggml-cpu.dll
-Tools/models/ggml-large-v2-q5_k.bin
+src/main        Electron, güvenli medya protokolü, FFmpeg/Whisper/yt-dlp, dışa aktarma
+src/preload     contextIsolation altında sınırlı IPC ve webUtils köprüsü
+src/renderer    React arayüzü ve mevcut görseller
+Tools           Çevrimdışı paket araçları, model, lisanslar ve bütünlük kilidi
+scripts         Araç hazırlığı, build doğrulaması ve gerçek Electron/kurulum testleri
+resources       Uygulama/NSIS ikonları
+installer       Aktif NSIS yardımcı makroları
 ```
 
-Binary ve model dosyaları boyutları nedeniyle normal Git commit'ine eklenmez. Bunları GitHub Release eki olarak yayımlamak önerilir. Git LFS kullanılacaksa önce `git lfs install` çalıştırılmalıdır.
+`src/MySesiMetneDonusturme`, kökteki `build.ps1` ve eski C# kurulum dosyaları önceki WPF uygulamasına aittir. Aktif Electron sürümünü oluşturmak için aşağıdaki npm komutlarını kullanın.
 
-## Kurulum ve geliştirme
+## Geliştirme ve çevrimdışı paket hazırlığı
+
+Windows x64, Node.js 20 veya daha yeni LTS ve npm gerekir. Geliştirici hazırlığı ağ erişimi ve model/araç/paket kopyaları için yeterli disk alanı gerektirir; en az 8 GB boş alan önerilir.
 
 ```powershell
 npm ci
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-tools.ps1
+npm run typecheck
+npm run build
 npm run dev
 ```
 
-`npm run dev`, Vite sunucusunu `127.0.0.1:5173` üzerinde açar ve Electron uygulamasını başlatır.
+`prepare-tools.ps1` yalnızca geliştirici/build aşamasında çalışır. Resmî kaynaklardan kilitlenmiş sürümleri indirir, SHA256 değerlerini kontrol eder, gereken DLL ve lisansları hazırlar. Son kullanıcının ilk açılışında araç veya model indirilmez.
 
-## Kontrol ve build
+Model dosyası `Tools/models/ggml-large-v2-q5_0.bin` olup 1.080.732.091 bayttır. Beklenen SHA256:
+
+```text
+3a214837221e4530dbc1fe8d734f302af393eb30bd0ed046042ebf4baf70f6f2
+```
+
+Önceki `q5_k` dosya adı resmî model kaynağıyla eşleşmediği için indirme, paketleme ve çalışma zamanı resmî **Large-v2 q5_0** dosyasında birleştirilmiştir; small/medium modele geçilmez. Kaynak: [whisper.cpp modelleri](https://huggingface.co/ggerganov/whisper.cpp/tree/main).
+
+Kurulum FFmpeg/FFprobe ve onların DLL'lerini, yt-dlp, YouTube JavaScript işlemleri için Deno, whisper-cli/Whisper/ggml CPU DLL'lerini, gerekli uygulama yanındaki Visual C++ çalışma zamanı DLL'lerini ve modeli içerir. Eksik/bozuk bileşen paketleme sırasında hata verir. Araç sürümleri ve kaynakları `Tools/tools-lock.json` içinde kayıtlıdır. Yeniden dağıtım koşulları için `Tools/README.md` ve paket içindeki `Tools/licenses` dizinine bakın; harici bileşenlerin kendi lisansları geçerlidir.
+
+Paketleme aracı, eski sürümün PDF bağımlılıklarını yanlış konuma yerleştirme hatasını gidermek için electron-builder **26.17.0** olarak sabitlenmiştir; Electron 34 ve NSIS korunur. Eksik üretim bağımlılıkları reddedilir. Paket içindeki gerçek EXE/ASAR ile Unicode PDF ve DOCX üretimi, geliştirme klasöründeki modüllerden yararlanmadan, NSIS sıkıştırmasından önce test edilir.
+
+## Doğrulama
 
 ```powershell
 npm run typecheck
 npm run build
-```
-
-Production build çıktıları `dist` ve `dist-electron` klasörlerinde oluşur.
-
-Mevcut kısa test medyası varsa gerçek Electron transkripsiyon, TXT/PDF/DOCX export ve süreç iptali testi:
-
-```powershell
-$env:ELECTRON_TEST_MEDIA = "C:\medya\kisa-test.wav"
+$env:ELECTRON_TEST_MEDIA = 'C:\medya\kisa-konusma.wav'
 npm run test:electron
 ```
 
-## Windows installer
+Electron testi gerçek FFmpeg ve Large-v2 modelini çalıştırır; sahte transkript üretmez. Test verileri ve çıktıları `build` altında yalıtılır. Ek dil ve isteğe bağlı internet/YouTube test değişkenleri için `scripts/electron-smoke.cjs` ve gerçek çalıştırma sonuçları için [TEST_NOTES.md](TEST_NOTES.md) dosyasına bakın. Dosya Gezgini'nde elle gerçekleştirilen test ile DevTools üzerinden yerel dosya bırakma testi ayrı değerlendirilir.
+
+## Windows x64 NSIS Setup
 
 ```powershell
 npm run dist
 ```
 
-Çıktı:
+Paketleme bütünlük kontrolü indirilen araçların/modelin mevcut olduğunu doğrular. Başarılı çıktı:
 
 ```text
 dist-electron-package/My-Sesi-Metne-Donusturme-Setup-x64.exe
 ```
 
-Installer FFmpeg, FFprobe, yt-dlp, gerekli Whisper DLL'leri ve `ggml-large-v2-q5_k.bin` modelini içerir. Paket büyük olduğu için installer normal Git commit'ine eklenmemeli, GitHub Releases üzerinden yayımlanmalıdır.
+Bu dosya ayrıca Windows'un gerçek Masaüstü klasörü sorgulanarak `My-Sesi-Metne-Donusturme-Setup-x64.exe` adıyla kopyalanır. Kurulum kendi başına çalışır; internetten ek paket/model almaz. Masaüstü ve Başlat menüsü kısayolları korunur. Kaldırma kullanıcı ayarları ve geçmişini silmez.
 
-## Uygulama verileri
+Temiz Windows 10/11 bilgisayarda çevrimdışı kurulum kabul testi ayrıca yapılmalıdır. Mevcut kullanıcı kurulumunu kaldırmamak için otomatik kurulum testi ayrı uygulama kimliğiyle aynı kaynak ve kaynak dosyalarını paketler; bu testin kapsamı ve kısıtları TEST_NOTES içinde açıkça belirtilir.
 
-- Ayarlar ve geçmiş: Electron `userData/data` dizini
-- Geçici çalışma dosyaları: `userData/data/work`; işlem bitince veya iptal edilince temizlenir
-- Transkript çıktıları: `%USERPROFILE%\Documents\My Sesi Metne Donusturme Ciktilar`
+## Veriler ve güvenlik
 
-## GitHub'a güvenli yükleme
+- Ayarlar/geçmiş: Electron `userData/data`.
+- İşlem dosyaları: `userData/data/work`; tamamlanınca veya iptal edilince temizlenir.
+- Ses önbelleği: `userData/data/audio-cache`. YouTube indirmesi transkripsiyon ve önizleme arasında paylaşılır; oynatma dosyaları işlem klasörü temizliğinden etkilenmez. Başlangıçta 30 gün/2 GB sınırına göre temizlenir; oturumda kullanılan sesler oynatma sırasında silinmez.
+- Çıktılar: Windows Belgeler klasörü altındaki `My Sesi Metne Donusturme Ciktilar`.
+- Teknik günlük: Windows geçici klasöründeki `MySesiMetneDonusturme-electron.log`.
 
-Push öncesinde:
+`contextIsolation` açık, `nodeIntegration` kapalıdır. Renderer yalnızca uygulamanın hazırladığı seslere opak `app-media` URL'leriyle erişir; protokol keyfî dosya yolu sunmaz ve seek için byte aralıklarını destekler. Dış gezinme/pencere açma engellenir. YouTube bağlantısı değişince eski video bilgisi ve bekleyen bilgi yanıtı yeni kaynak için kullanılmaz.
 
-```powershell
-git status --short
-git diff --check
-git ls-files | Select-String -Pattern "node_modules|dist-electron-package|Tools/models|\.exe$|\.bin$"
-```
+Yalnızca erişim hakkınız bulunan desteklenen YouTube içeriklerini işleyin. Oturum, yaş/bölge veya servis kısıtlamaları yüzünden bazı videolar indirilemeyebilir; teknik neden günlüğe ve anlaşılır açıklama arayüze yazılır.
 
-Beklenmeyen büyük dosya görünmüyorsa:
+## GitHub
 
-```powershell
-git add .
-git status --short
-git commit -m "fix: improve transcription workflow, ui layout, cancellation and packaging"
-git push origin main
-```
+Depo: [mylmaz/My-Sesi-Metne-Donusturme](https://github.com/mylmaz/My-Sesi-Metne-Donusturme).
 
-Force push kullanılmamalıdır. Token, `.env`, sertifika ve özel anahtarlar repoya eklenmemelidir.
+Kaynakları ve küçük dil görselini commit edin. Model, EXE/DLL, node_modules, test medyası ve build/kurulum çıktıları normal Git geçmişine eklenmez. Büyük Setup dosyası için GitHub Releases uygundur; yayınlama ayrıca yetkilendirilip gerçekleştirilmelidir. [GitHub komutları](GITHUB_UPLOAD_COMMANDS.md) force push kullanmadan mevcut dalın güncellenmesini açıklar.

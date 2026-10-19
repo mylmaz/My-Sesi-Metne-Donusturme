@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "model": "ggml-large-v2-q5_0.bin",
+  "files": [
+    {
+      "path": "ffmpeg/avcodec-62.dll",
+      "size": 90946048,
+      "sha256": "0259adbf50b1ccd88e3dad5648fbc1faf453c11f9bf8dddc73d4de628832c70e"
+    },
+    {
+      "path": "ffmpeg/avdevice-62.dll",
+      "size": 4947456,
+      "sha256": "db194f4e895cc9df1f378a49bfda33e7aa812c3435d1af204c7536e15f1dc985"
+    },
+    {
+      "path": "ffmpeg/avfilter-11.dll",
+      "size": 31557632,
+      "sha256": "6182ef84405eda4888956261508bca212ac14effce8b89b06968f7367c9f00ef"
+    },
+    {
+      "path": "ffmpeg/avformat-62.dll",
+      "size": 22728192,
+      "sha256": "d369715ae34cbaf3470185bd1e4b893209060a3e8ab507d6006683800ef938b5"
+    },
+    {
+      "path": "ffmpeg/avutil-60.dll",
+      "size": 3014144,
+      "sha256": "0cd1d710d6bf0de3187bd1cb54759ebaf328b6229653fd8241ed8a405b231eea"
+    },
+    {
+      "path": "ffmpeg/ffmpeg.exe",
+      "size": 540672,
+      "sha256": "3a131de61ad18f2319416b5be2c436a08e93df4fee8f4c63e72dcc67d4a301b1"
+    },
+    {
+      "path": "ffmpeg/ffprobe.exe",
+      "size": 226816,
+      "sha256": "a86ecf8e6e69dae0d7b793a8e66ec3d1af4481e63bf06e7b326fd87aaea6c26c"
+    },
+    {
+      "path": "ffmpeg/swresample-6.dll",
+      "size": 734720,
+      "sha256": "94065fb1ee7c354c8256edc9de589529f685b00af9b703f92de5a87d78e71fd1"
+    },
+    {
+      "path": "ffmpeg/swscale-9.dll",
+      "size": 12900864,
+      "sha256": "52965fdb66b7bfe3620249067550e7ff1784b15ba1290096d44f079274d52a3e"
+    },
+    {
+      "path": "whisper/concrt140.dll",
+      "size": 324208,
+      "sha256": "2405355f0a58067b258f8df33c327e3a3d716eaac5a3a5aebb757842d85bd376"
+    },
+    {
+      "path": "whisper/ggml.dll",
+      "size": 67584,
+      "sha256": "894c6237ee7849843213906a2b6a0b371aaa6234048d465f206d910ae846fafb"
+    },
+    {
+      "path": "whisper/ggml-base.dll",
+      "size": 666624,
+      "sha256": "1482359d921b4c1b183d49db1d770f9b5e90d86a618b8b648d4845c2471ad6b0"
+    },
+    {
+      "path": "whisper/ggml-cpu-alderlake.dll",
+      "size": 809984,
+      "sha256": "d1c5411561361f7ce71ff8455ecf01f666f581b0608fa91a1dfe7d3fd6a25bd1"
+    },
+    {
+      "path": "whisper/ggml-cpu-cannonlake.dll",
+      "size": 853504,
+      "sha256": "2ef36f05fa252ff4fdcb8d42ebce1ceba4f3d3de12b93bed15bdee6237dccd63"
+    },
+    {
+      "path": "whisper/ggml-cpu-cascadelake.dll",
+      "size": 850944,
+      "sha256": "505899aaf3f99c5d714361640f561458ea97f8a09eb0614568a66bead2115cb0"
+    },
+    {
+      "path": "whisper/ggml-cpu-haswell.dll",
+      "size": 811008,
+      "sha256": "f8cf2f35a06498d783d77fde42004dd54d2f8236b0d42ac323b94bba65a603c4"
+    },
+    {
+      "path": "whisper/ggml-cpu-icelake.dll",
+      "size": 850944,
+      "sha256": "78ad143ee2e674d037b4840ef33b5748a0659762a26e0ae2b621c4f9451cbde8"
+    },
+    {
+      "path": "whisper/ggml-cpu-sandybridge.dll",
+      "size": 803328,
+      "sha256": "ee47db7dc40fb30eca73e62a05306059c2c3c42aecddf2e8d6ad7e530069b815"
+    },
+    {
+      "path": "whisper/ggml-cpu-skylakex.dll",
+      "size": 852992,
+      "sha256": "164e2793897944a43ee071ce6c0b09018088bdf4dd8b14ac0755c58849cf8c50"
+    },
+    {
+      "path": "whisper/ggml-cpu-sse42.dll",
+      "size": 790016,
+      "sha256": "7318a9a3b95a85b2453c437b274412bbbae89e5ecdf5babb19b99edc06ded063"
+    },
+    {
+      "path": "whisper/ggml-cpu-x64.dll",
+      "size": 794112,
+      "sha256": "af0f1c2f28ff9e3f472481dd969907bda85fa39d4fde17617d4bb0b389301b60"
+    },
+    {
+      "path": "whisper/msvcp140.dll",
+      "size": 557728,
+      "sha256": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9"
+    },
+    {
+      "path": "whisper/msvcp140_1.dll",
+      "size": 35952,
+      "sha256": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d"
+    },
+    {
+      "path": "whisper/msvcp140_2.dll",
+      "size": 280200,
+      "sha256": "3ea06f0ee098b4823cb79599df3780e7f23cce52c19aac31d2a0d47efe33a5e9"
+    },
+    {
+      "path": "whisper/msvcp140_atomic_wait.dll",
+      "size": 50304,
+      "sha256": "640b2aefced484d0368eea5bdd06addd0658a3a70a49256e560d6923b404a479"
+    },
+    {
+      "path": "whisper/msvcp140_codecvt_ids.dll",
+      "size": 31872,
+      "sha256": "f2069a52880ec885ee7f0511186100eb7fada0411a2b4948fafea7735b878a18"
+    },
+    {
+      "path": "whisper/vcamp140.dll",
+      "size": 418944,
+      "sha256": "52af68f35476bd03d7b97752b01bef358ffdda568d150057d6ce809f77c4f704"
+    },
+    {
+      "path": "whisper/vccorlib140.dll",
+      "size": 352384,
+      "sha256": "19839407c3fdbc824e5bce189bf68ddf8097f12ec28b757797ffa0415c144ddd"
+    },
+    {
+      "path": "whisper/vcomp140.dll",
+      "size": 193152,
+      "sha256": "55aba23cdcd6484fbb06f4155b8ca75adfce7a881f10afd0c49457165e677164"
+    },
+    {
+      "path": "whisper/vcruntime140.dll",
+      "size": 124544,
+      "sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066"
+    },
+    {
+      "path": "whisper/vcruntime140_1.dll",
+      "size": 49792,
+      "sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f"
+    },
+    {
+      "path": "whisper/vcruntime140_threads.dll",
+      "size": 38528,
+      "sha256": "219915cf20822f34d5e7c1fdd4e21ae7f3396881096c51036225fb8f84b47afa"
+    },
+    {
+      "path": "whisper/whisper.dll",
+      "size": 1368064,
+      "sha256": "792fc523c7ad16e6b9c348e30ad5e5f591165cbcf6a80ca8d0db02a38ce3eea2"
+    },
+    {
+      "path": "whisper/whisper-cli.exe",
+      "size": 479232,
+      "sha256": "95e3c0b0e778ad9499eb0125f97c1dcf437dd9eb4ea77050b043574f93c2631d"
+    },
+    {
+      "path": "yt-dlp/yt-dlp.exe",
+      "size": 17840399,
+      "sha256": "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
+    },
+    {
+      "path": "deno/deno.exe",
+      "size": 97462048,
+      "sha256": "e020f3e232bd16e33768dee528e5983349c962952051ced0a5d58ad42f5d9b33"
+    },
+    {
+      "path": "models/ggml-large-v2-q5_0.bin",
+      "size": 1080732091,
+      "sha256": "3a214837221e4530dbc1fe8d734f302af393eb30bd0ed046042ebf4baf70f6f2"
+    },
+    {
+      "path": "licenses/Deno-LICENSE.txt",
+      "size": 1074,
+      "sha256": "f62497fffecc0852960c8d3e6934b9db86d16396e9b604072e923892cae3a588"
+    },
+    {
+      "path": "licenses/Deno-V8-LICENSE.txt",
+      "size": 1078,
+      "sha256": "1c6356fb751d45f0c53093ebf8a7f5e580e802f51999178e19d60f3ec39e147d"
+    },
+    {
+      "path": "licenses/ffmpeg/LICENSE.txt",
+      "size": 7651,
+      "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+    },
+    {
+      "path": "licenses/Microsoft-VC-Runtime-LICENSE.rtf",
+      "size": 9235,
+      "sha256": "8099dc3cf9502c335da829e5c755948a12e3e6de490eb492a99deb673d883d8b"
+    },
+    {
+      "path": "licenses/whisper-LICENSE.txt",
+      "size": 1078,
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+    },
+    {
+      "path": "licenses/Whisper-model-LICENSE.txt",
+      "size": 1063,
+      "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
+    },
+    {
+      "path": "licenses/yt-dlp-LICENSE.txt",
+      "size": 1211,
+      "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
+    },
+    {
+      "path": "licenses/yt-dlp-THIRD_PARTY_LICENSES.txt",
+      "size": 243550,
+      "sha256": "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7"
+    },
+    {
+      "path": "licenses/ffmpeg/COPYING.GPLv3.txt",
+      "size": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    }
+  ]
+}
